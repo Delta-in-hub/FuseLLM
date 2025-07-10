@@ -1,40 +1,3 @@
-
-
-使用 RUST 语言实现 FUSE  用户态文件系统,  根据**一切皆文件**的设计哲学,  将与 LLM 的交互操作, 暴露到文件系统.  可能和LLM的交互也可以操作这个FUSE本身. 
-
-LLM作为文件系统驱动程序, 将LLM暴露为特殊文件, 符合“一切皆文件”理念，易于集成现有工具。考虑支持复杂操作（如语义搜索）
-
-
-
-
-
-
-
-/：根目录。
-
-- /models
-
-  ：目录，列出可用 LLM 模型。
-
-  - /models/gpt-3.5：文件，与 GPT-3.5 模型交互。
-  - /models/gpt-4：文件，与 GPT-4 模型交互。
-
-- /conversations
-
-  ：目录，管理对话会话。
-
-  - /conversations/session1：文件，一个对话会话。
-
-- /config
-
-  ：目录，配置参数。
-
-  - /config/model/*/setting：某个模型的配置文件， TOML 格式.
-
-
-
-
-
 # **FuseLLM**
 
 ### Mount your LLM.
@@ -54,91 +17,245 @@ LLM作为文件系统驱动程序, 将LLM暴露为特殊文件, 符合“一切�
 ### **1. 核心设计哲学**
 
 *   **一切皆文件**: 将与 LLM 的交互（如会话、提问、配置、上下文管理）以及对文件系统本身的管理，全部映射为文件和目录的读写操作。这使得任何标准的命令行工具 (`ls`, `cat`, `echo`, `grep`, `find`) 都能自然地与 LLM 互动。
-*   **LLM 即驱动**: 文件系统本身不存储常规数据，它是一个转换层或“驱动程序”。文件的内容是动态生成的，是对 LLM API 调用的响应。写入文件则会触发对 LLM API 的调用。
-*   **层次化与情景化**: 使用目录来组织和隔离不同的交互会话（Contexts）。每个会话拥有独立的上下文、历史记录和配置，类似于 `/proc` 下的每个进程目录 (`/proc/<pid>/`) 都包含该进程的独立信息。
+*   **LLM 即驱动**: 文件系统本身不存储常规数据，它是一个转换层或“驱动程序”。写入某些文件会触发对 LLM API 的调用。
+*   **层次化与情景化**: 使用目录来组织和隔离不同的交互会话（conversations）。每个会话拥有独立的上下文、历史记录和配置，类似于 `/proc` 下的每个进程目录 (`/proc/<pid>/`) 都包含该进程的独立信息。
 
-### **2. 文件系统结构（挂载点：/mnt/llmfs）**
+### **2. 文件系统结构（挂载点：/mnt/fusellm）**
 
 ```
-/mnt/llmfs
-├── config         # [目录] 全局配置
-│   ├── model      # [文件] 当前默认使用的 LLM 模型 (e.g., "gpt-4o", "claude-3-opus")
-│   └── endpoint   # [文件] LLM API 的地址
-├── sessions       # [目录] 存放所有交互会话
-│   ├── <session_id_1> # [目录] 一个独立的会话，ID 可以是 UUID 或用户命名
-│   │   ├── prompt     # [文件] 核心交互文件。写入触发提问，读取获得回答
+/mnt/fusellm
+- /models
+  ：目录，列出可用 LLM 模型。
+  - /models/default
+  - /models/gpt-3.5：文件， 与 GPT-3.5 模型交互。 写是询问LLM, 读是LLM最新一次的回复。每次写，创建一个新的 conversation
+  - /models/gpt-4：GPT-4 模型交互。
+  - /config/model/*/setting：某个模型的配置文件， TOML 格式.
+├── config         # [目录] 配置
+---- settings.toml  ; 默认配置 ， 写的时候，后端要进行格式验证，否则返回错误。
+│   ├── models/
+---------------/gpt3.5/settings.toml       模型的配置， 覆盖全局默认配置
+├── conversations       # [目录] 存放所有交互会话
+------- latest       最新的一个会话， 注意特殊情况， 目录为空
+│   ├── <session_id_1> # [目录] 一个独立的会话，类似 PID 分配的方式， 整个目录可以被删除
+│   │   ├── prompt     # [文件] 核心交互文件。写入触发提问，读取获得回答。 
 │   │   ├── history    # [文件] 只读，包含此会话的完整问答历史
 │   │   ├── context    # [文件] 可读写，代表当前会话的上下文或"记忆"
-│   │   ├── ctl        # [文件] 会话级控制文件 (例如: 清除历史、重置会话)
 │   │   └── config     # [目录] 此会话的专属配置
 │   │       ├── model  # [文件] 覆盖全局模型设置
 │   │       ├── system_prompt # [文件] 设置此会话的系统提示/角色
-│   │       └── temperature   # [文件] 控制生成的多样性 (e.g., "0.7")
+│   │       └── settings.toml   
 │   │
 │   └── <session_id_2> # [目录] 另一个独立的会话
 │       └── ...
 │
-└── tools          # [目录] 提供超越简单问答的特殊工具
-    └── semantic_search # [目录] 语义搜索工具
+└── semantic_search # [目录] 语义搜索工具
+	--- default
         ├── corpus   # [目录] 文档语料库。用户可将文件放入此处
-        ├── index_ctl# [文件] 索引控制 (写入 "build" 触发索引构建)
+        └── query    # [文件] 查询接口。写入问题，读取返回最相关的文档片段
+	--- <idxxx>
+        ├── corpus   # [目录] 文档语料库。用户可将文件放入此处
         └── query    # [文件] 查询接口。写入问题，读取返回最相关的文档片段
 ```
 
 ### **3. 文件/目录操作详解**
 
-*   **创建会话**:
-    *   `mkdir /mnt/llmfs/sessions/my_project_chat`
-    *   **背后实现**: FUSE 驱动捕获 `mkdir` 操作，在内存（或持久化存储）中创建一个新的会話对象，并分配一个唯一的 `session_id`。
+```
+本节详细说明了在 FuseLLM 文件系统中，针对每个文件和目录执行标准命令 (如 `ls`, `cat`, `echo`, `mkdir`, `rm`) 时，所期望的具体行为和后端逻辑。
 
-*   **删除会话**:
-    *   `rmdir /mnt/llmfs/sessions/my_project_chat`
-    *   **背后实现**: 捕获 `rmdir`，销毁对应的会话对象，释放资源。
+---
 
-*   **基本交互 (`prompt` 文件)**:
-    *   **提问**: `echo "用 Rust 写一个 hello world" > /mnt/llmfs/sessions/my_project_chat/prompt`
-    *   **获取回答**: `cat /mnt/llmfs/sessions/my_project_chat/prompt`
-    *   **背后实现**:
-        1.  `write` 操作将内容追加到会话的输入缓冲区。
-        2.  FUSE 驱动将当前会话的 `context`, `history`, `system_prompt` 和新的输入组合成一个完整的请求。
-        3.  异步调用 LLM API。
-        4.  `read` 操作会阻塞，直到 LLM API 返回结果。返回的结果被存储在输出缓冲区，并可被读取。后续的 `read` 会返回相同的结果，直到下一次 `write`。
+#### **根目录 (`/mnt/fusellm`)**
 
-*   **查看历史 (`history` 文件)**:
-    *   `cat /mnt/llmfs/sessions/my_project_chat/history`
-    *   **背后实现**: `read` 操作会格式化并返回当前会话的所有问答对。这是一个只读文件。
+*   **`ls -l /mnt/fusellm`**
+    *   **行为**: 列出顶层目录。
+    *   **输出**: `models`, `config`, `conversations`, `semantic_search`。
 
-*   **配置管理 (`config` 目录)**:
-    *   `echo "gpt-4o-mini" > /mnt/llmfs/config/model` (全局设置)
-    *   `echo "你是一个专业的 Rust 程序员" > /mnt/llmfs/sessions/my_project_chat/config/system_prompt` (会话级设置)
-    *   `cat /mnt/llmfs/sessions/my_project_chat/config/temperature`
-    *   **背后实现**: `write` 更新配置项，`read` 返回当前值。会话级配置会覆盖全局配置。
+---
 
-    
-    
-*   **语义搜索 (`tools/semantic_search`)**:
-    
-    1.  **填充语料**: `cp my_document.txt /mnt/llmfs/tools/semantic_search/corpus/`
-    
-    2.  **构建索引**: `echo "build" > /mnt/llmfs/tools/semantic_search/index_ctl`
-    
-        *   **背后实现**: FUSE 驱动读取 `corpus` 目录下的所有文件，使用文本嵌入模型（如 Sentence Transformers）为它们生成向量，并将这些向量存储在内存或磁盘上的向量数据库（如 Faiss, Qdrant）中。`read` `index_ctl`可以返回索引状态（如 "indexing", "ready", "failed"）。
-    
-    3.  **执行查询**:
-    
-        *   `echo "关于项目预算的部分在哪里？" > /mnt/llmfs/tools/semantic_search/query`
-        *   `cat /mnt/llmfs/tools/semantic_search/query`
-        *   **背后实现**: `write` 操作触发查询。驱动将查询文本转换为向量，在向量数据库中进行相似度搜索，找到最匹配的 N 个文档片段。`read` 操作则返回这些格式化后的结果。
-    
-    4.  可以考虑使用 通过zeromq IPC 使用 Python llama_index 实现, jsonrpc
-    
-        
+#### **模型目录 (`/models`)**
 
-### **4. 技术考量 (Rust 实现层面)**
+此目录提供对已配置模型的直接、无状态访问。
+
+*   **`ls -l /models`**
+    *   **行为**: 列出所有后端配置中可用的 LLM 模型。
+    *   **输出**: 类似 `default` (符号链接), `gpt-3.5`, `gpt-4`, `llama3` 等文件。
+    *   **实现细节**: `default` 是一个指向默认模型的符号链接，可以通过 `ln -sf gpt-4 /models/default` 命令来更改。
+
+*   **`cat /models/gpt-4`**
+    *   **行为**: 读取此模型**上一次无状态交互**的回答。如果从未进行过交互，则返回一条状态信息。
+    *   **输出示例**: `I am GPT-4, ready for your request.` 或上一次 `echo` 请求的答案。
+    *   **用途**: 快速检查模型可用性或获取上次简单查询的结果。
+
+*   **`echo "Translate 'hello world' to French" > /models/gpt-4`**
+    *   **行为**: 发起一次**无状态、一次性**的对话。
+    *   **后端逻辑**:
+        1.  接收到写入请求。
+        2.  使用写入的内容作为 `prompt`。
+        3.  调用 `gpt-4` 模型 API。
+        4.  阻塞操作，直到收到 LLM 的完整回复。
+        5.  将回复存储在与该模型文件关联的临时内存区域中。
+        6.  写入操作成功返回。
+    *   **用途**: “开箱即用”的快速问答，无需创建完整的会话。非常适合脚本化的一次性任务。
+
+*   **`rm /models/gpt-4` 或 `touch /models/new-model`**
+    *   **行为**: 操作失败。
+    *   **返回**: `Permission denied` 或 `Read-only file system`。模型列表由系统配置决定，不能由用户在文件系统层面直接增删。
+
+---
+
+#### **配置目录 (`/config`)**
+
+*   **`/config/settings.toml` (全局配置)**
+    *   `cat settings.toml`: 读取并以 TOML 格式返回当前的全局配置。
+    *   `echo "[model]\ntemperature = 0.8" > settings.toml`:
+        1.  后端捕获写入内容。
+        2.  **验证**: 使用 `toml` 库解析内容，并根据预设的配置结构进行验证（例如，`temperature` 必须是 0 到 2 之间的浮点数）。
+        3.  **失败**: 如果验证失败，写入操作将失败，并返回 `EINVAL` (Invalid argument) 或 `EIO` 错误，错误信息可以包含验证失败的原因。
+        4.  **成功**: 如果验证成功，则更新后端的全局配置状态。
+
+*   **`/config/models/<model_name>/settings.toml` (模型专属配置)**
+    *   行为与全局配置类似，但其作用域仅限于 `<model_name>`。此处的设置会**覆盖** `/config/settings.toml` 中的同名设置。
+    *   例如 `cat /config/models/gpt-4/settings.toml` 可能显示 `temperature = 1.2`，即使全局设置是 `0.8`。
+
+---
+
+#### **会话目录 (`/conversations`)**
+
+管理有状态、持续性的对话。
+
+*   **`ls -l /conversations`**
+    *   **行为**: 列出所有活动的会话目录和 `latest` 符号链接。
+    *   **输出**: `1001`, `1002`, `my-project-chat`, `latest -> my-project-chat`。
+
+*   **`mkdir /conversations/my-new-chat`**
+    *   **行为**: 创建一个新的、持久化的会话。
+    *   **后端逻辑**:
+        1.  分配一个新的会话状态对象（包含空的历史记录、上下文等）。
+        2.  使用 `my-new-chat` 作为其标识符。
+        3.  在文件系统视图中创建 `/conversations/my-new-chat` 目录及其内部结构 (`prompt`, `history` 等文件)。
+
+*   **`rmdir /conversations/my-new-chat` 或 `rm -r /conversations/my-new-chat`**
+    *   **行为**: 删除一个会话及其所有历史记录。
+    *   **后端逻辑**: 从内存中彻底清除与该会话 ID 相关的所有状态（历史、上下文、配置）。这是一个不可逆操作。
+
+*   **`latest` (符号链接)**
+    *   这是一个动态管理的符号链接，**永远指向最近有过交互（特指写入 `prompt` 文件）的会话目录**。
+    *   **用途**: 极大地简化了工作流，用户可以随时通过 `cd /mnt/fusellm/conversations/latest` 进入最新的工作环境。
+
+---
+
+#### **单个会话目录 (`/conversations/<session_id>/`)**
+
+*   **`prompt` (文件)**
+    *   `echo "My question is..." > prompt`: **核心交互操作**。
+        1.  将写入的内容作为用户的新问题。
+        2.  将其追加到会话的内部历史记录中。
+        3.  构建完整的请求体（包含 `system_prompt`, `context`, 和 `history`）。
+        4.  向该会话配置的 LLM (`./config/model` 文件指定) 发送 API 请求。
+        5.  操作会阻塞，直到 LLM 返回响应。
+        6.  将 LLM 的回答存储在会话的“最新回答”字段中，并追加到历史记录。
+    *   `cat prompt`: 读取并返回该会话**最新的 LLM 回答**。如果一个 `echo` 操作正在进行中，`cat` 将会阻塞直到回答准备就绪。
+
+*   **`history` (只读文件)**
+    *   `cat history`: 读取该会话自创建以来的**完整对话历史**。
+    *   **输出格式**:
+        ```
+        [SYSTEM]
+        You are a helpful assistant.
+
+        [USER]
+        What is FUSE?
+
+        [AI]
+        FUSE stands for Filesystem in Userspace...
+        ```
+    *   `echo "..." > history`: 操作失败，返回 `Read-only file system`。
+
+*   **`context` (读写文件)**
+    *   `cat context`: 读取当前为会话设置的额外上下文。
+    *   `echo "Use this document as reference: ..." > context`: **覆盖**当前上下文。
+    *   `cat doc.txt >> context`: **追加**内容到当前上下文。
+    *   **用途**: 为 LLM 提供临时的、不计入永久 `history` 的背景信息，例如粘贴一段代码或一篇文章让 LLM 分析。
+
+*   **`config/` (目录)**: 会话专属配置，拥有最高优先级。
+    *   `config/model` (文件):
+        *   `cat model`: 显示当前会话使用的模型，如 `gpt-4`。
+        *   `echo "llama3" > model`: 将当前会话的 LLM 切换为 `llama3`。
+    *   `config/system_prompt` (文件):
+        *   `cat system_prompt`: 显示当前会话的系统提示/角色设定。
+        *   `echo "You are a succinct technical writer." > system_prompt`: 为当前会话设定新的角色。
+    *   `config/settings.toml` (文件):
+        *   行为与全局/模型配置一样，但仅对当前会话生效，优先级最高。例如，可以在这里临时为某个会话开启更高的 `temperature` 以获得更有创意的回答。
+
+---
+
+#### **语义搜索目录 (`/semantic_search`)**
+
+提供基于向量的文档搜索能力。
+
+*   **`ls -l /semantic_search`**
+    *   **行为**: 列出所有已创建的搜索索引。
+    *   **输出**: `default`, `my-codebase`, `project-docs`。
+
+*   **`mkdir /semantic_search/my-api-docs`**
+    *   **行为**: 创建一个新的、空的语义搜索索引。
+    *   **后端逻辑**: 初始化一个空的向量数据库/索引实例，并将其与 `my-api-docs` 这个名字关联。
+
+*   **`rmdir /semantic_search/my-api-docs`**
+    *   **行为**: 删除整个索引及其包含的所有数据。
+
+*   **索引内部 (`/semantic_search/<index_id>/`)**
+    *   **`corpus/` (目录)**:
+        *   `cp ~/doc.md ./corpus/` 或 `echo "text chunk" > ./corpus/new_file.txt`: **触发索引构建**。
+            1.  后端监测到 `corpus` 目录中有新文件写入或创建。
+            2.  读取文件内容。
+            3.  （可选）将内容分块 (chunking)。
+            4.  使用预配置的嵌入模型为每个块生成向量嵌入。
+            5.  将文本块和其向量存入与 `<index_id>` 关联的向量数据库中。
+        *   `rm ./corpus/doc.md`: 从索引中删除与此文件相关的所有向量和数据。
+    *   **`query` (文件)**:
+        *   `echo "How to use the login endpoint?" > query`: **执行语义搜索**。
+            1.  后端捕获写入的查询字符串。
+            2.  为查询字符串生成向量嵌入。
+            3.  在 `<index_id>` 对应的向量数据库中执行相似性搜索。
+            4.  获取排名最前的 N 个结果（文档片段）。
+            5.  将格式化后的结果存放在该文件的读取缓冲区中。
+        *   `cat query`: 读取并返回**上一次搜索的结果**。
+        *   **输出格式**:
+            ```
+            --- Result 1/3 (Score: 0.92) ---
+            Source: /corpus/auth-api.md
+            Content: ... a valid JWT token must be provided in the Authorization header to access the /login endpoint ...
+
+            --- Result 2/3 (Score: 0.88) ---
+            Source: /corpus/examples.txt
+            Content: ... example of logging in: curl -X POST /login -d '{"user": "..."}' ...
+            ```
+```
+
+
+
+
+
+
+
+
+
+### **4. 技术实现 (Rust 实现层面)**
+
+
+
+使用Linux环境，使用 RUST 语言，通过 FUSE 实现以上功能。
+
+semantic_search 部分，通过 RUST 通过 zeromq 的 ipc 和 python 通信， python 使用llama_index实现。
+
+要求符合现代 RUST 开发的最佳实践。
+
+
 
 - TDD 测试驱动开发
   - https://doc.rust-lang.org/rust-by-example/testing.html
-- 推荐使用的库
+- 推荐可以使用的库
   - https://docs.rs/fuse/latest/fuse/  
   - https://docs.rs/async-openai/latest/async_openai/
   - https://docs.rs/async-std/latest/async_std/
@@ -146,24 +263,199 @@ LLM作为文件系统驱动程序, 将LLM暴露为特殊文件, 符合“一切�
   - https://docs.rs/redis/latest/redis/
   - https://docs.rs/crate/zmq/latest
 
-*   **状态管理**: 会话状态（历史、配置）需要被安全地管理。可以选择内存存储（简单，但重启后丢失）或持久化存储（Redis）来保存状态。
+*   **状态管理**: 会话状态（历史、配置）需要被安全地管理。选择内存存储（简单）来保存状态。
 *   **并发控制**: 多个进程可能同时访问文件系统。需要为每个会话的关键操作（如写入 `prompt`）实现锁或队列机制，以防止竞争条件。
 *   **错误处理**: LLM API 调用失败、网络问题等都应被妥善处理，并向上层应用返回标准的文件系统错误码，例如 `EIO` (Input/output error)。
 *   **安全性**: API 密钥和其他敏感配置绝不能硬编码。应通过环境变量或安全的配置文件在文件系统挂载时提供。
+
+
+
+
+
+#### 目录结构
+
+```
+fusellm/
+├── .cargo/
+│   └── config.toml          # Optional: for aliasing commands like `cargo t`
+├── .github/
+│   └── workflows/
+│       └── ci.yml           # Continuous Integration setup (testing, linting)
+├── .gitignore               # Standard Rust .gitignore
+├── Cargo.toml               # Project manifest with all dependencies
+├── README.md                # Project overview, setup, and usage instructions
+├── config.example.toml      # Example configuration for users to copy
+│
+├── semantic_search_service/ # Python service for semantic search
+│   ├── README.md            # Instructions for the search service
+│   ├── requirements.txt     # Python dependencies (pyzmq, llama-index, etc.)
+│   └── service.py           # Main Python script with ZMQ REP socket and llama_index logic
+│
+├── src/
+│   ├── main.rs              # Main entry point: parses args, loads config, mounts FS
+│   ├── lib.rs               # Library crate root, declares all modules
+│   │
+│   ├── config.rs            # Defines Config structs (Global, Model, etc.) and validation logic
+│   ├── error.rs             # Defines the project's custom Error enum and Result type
+│   │
+│   ├── filesystem.rs        # Defines the main `FuseLLMFs` struct and its `impl Filesystem`
+│   │
+│   ├── state/               # Module for managing the live state of the filesystem
+│   │   ├── mod.rs           # Declares sub-modules and the main `AppState` struct
+│   │   ├── conversation.rs  # `Conversation` struct: history, context, config, etc.
+│   │   └── search_index.rs  # `SearchIndex` struct: tracks corpus files
+│   │
+│   ├── vfs/                 # Virtual File System: maps paths to internal logic
+│   │   ├── mod.rs           # Declares the `resolve_path` function
+│   │   └── node.rs          # `FsNode` enum: represents every possible file/dir type
+│   │
+│   ├── handlers/            # FUSE operation handlers, called by filesystem.rs
+│   │   ├── mod.rs           # Declares all handler modules
+│   │   ├── directory.rs     # Logic for readdir, mkdir, rmdir
+│   │   ├── file_read.rs     # Logic for `read()` operations (cat prompt, history, etc.)
+│   │   ├── file_write.rs    # Logic for `write()` operations (echo > prompt, config, etc.)
+│   │   ├── metadata.rs      # Logic for `getattr()`, `setattr()`, etc.
+│   │   └── symlink.rs       # Logic for `readlink()` (for `/conversations/latest`)
+│   │
+│   └── services/            # Backend service integrations
+│       ├── mod.rs           # Declares service modules
+│       ├── llm_api.rs       # Async functions to interact with LLM APIs (async-openai)
+│       └── search_client.rs # ZMQ client (REQ socket) to talk to the Python service
+│
+└── tests/
+    ├── integration/         # Integration tests
+    │   ├── mod.rs
+    │   ├── config_parsing.rs  # Tests for loading and validating TOML configs
+    │   ├── conversation_flow.rs # Simulates a full chat session (mocks LLM API)
+    │   └── search_protocol.rs # Tests ZMQ communication (mocks Python service)
+    └── common/              # Test utilities and setup functions
+        └── mod.rs           # Helper functions for creating mock state, etc.
+```
+
+
+
+```
+
+### **File-by-File Explanation**
+
+#### **Root Directory**
+
+*   **`Cargo.toml`**: The heart of the Rust project. It will contain dependencies like:
+    ```toml
+    [dependencies]
+    fuse = "0.3.1"
+    async-openai = "0.29.0"
+    async-std = { version = "1.13.1", features = ["attributes"] }
+    toml = "0.9.1"
+    zmq = "0.10.0"
+    serde = { version = "1.0", features = ["derive"] }
+    serde_json = "1.0"
+    log = "0.4"
+    env_logger = "0.11"
+    # ... and others for command-line parsing, etc.
+    ```
+*   **`config.example.toml`**: A user-friendly template.
+    ```toml
+    # FuseLLM Configuration
+
+    # API key for OpenAI. Can also be set via OPENAI_API_KEY environment variable.
+    api_key = "sk-..." 
+
+    [default_model]
+    name = "gpt-4"
+    temperature = 0.7
+    system_prompt = "You are a helpful assistant."
+
+    # Per-model overrides
+    [models.gpt-3.5]
+    temperature = 1.0
+
+    [semantic_search]
+    # ZMQ address for the Python semantic search service
+    zmq_address = "ipc:///tmp/fusellm-search.ipc"
+    embedding_model = "default"
+    ```
+*   **`semantic_search_service/`**: Self-contained Python component. This clean separation prevents mixing Python and Rust tooling. `service.py` implements the ZMQ server and `llama_index` logic.
+
+#### **`src/` Directory**
+
+*   **`main.rs`**: The executable's entry point. Its job is minimal:
+    1.  Parse command-line arguments (e.g., mount point).
+    2.  Initialize logging (`env_logger`).
+    3.  Load configuration from `config.toml` and environment variables.
+    4.  Create the shared `AppState` (application state).
+    5.  Instantiate `FuseLlmFs` with the state.
+    6.  Call `fuse::mount()` to start the filesystem.
+
+*   **`lib.rs`**: Makes the core logic a library, which is essential for integration testing. It just declares the public modules: `pub mod config; pub mod error; ...`.
+
+*   **`config.rs`**: Contains Rust structs that mirror the TOML configuration file, using `serde::Deserialize` for automatic parsing and `validator` for validation logic.
+
+*   **`error.rs`**: Defines a comprehensive `enum FuseLlmError` that wraps errors from `std::io`, `fuse`, `toml`, `zmq`, `async_openai`, etc. This allows functions to return a single, consistent `Result` type.
+
+*   **`filesystem.rs`**: This is the core of the FUSE implementation. It will contain the `impl Filesystem for FuseLlmFs { ... }`. Each function (`getattr`, `read`, `write`, etc.) will:
+    1.  Call `vfs::resolve_path()` to understand what file/directory is being operated on.
+    2.  Lock the shared `AppState`.
+    3.  Dispatch the request to the appropriate handler in the `handlers/` module.
+
+*   **`state/` (Module)**: Manages all dynamic data.
+    *   **`mod.rs`**: Defines `AppState`, which will be wrapped in `Arc<RwLock<AppState>>` and shared across all FUSE threads. It holds `HashMap`s for conversations and search indexes.
+    *   **`conversation.rs`**: `struct Conversation` holds a single chat's `id`, `history` (a `Vec` of messages), `context` (`String`), and its specific `config`.
+    *   **`search_index.rs`**: `struct SearchIndex` holds the state for a semantic search instance, primarily the list of files in its `corpus`.
+
+*   **`vfs/` (Module)**: The "Virtual File System" router.
+    *   **`node.rs`**: The most critical enum. It maps a path to a logical entity.
+        ```rust
+        // Example FsNode enum
+        pub enum FsNode {
+            Root,
+            ModelsDir,
+            ModelFile { name: String },
+            ConversationsDir,
+            Conversation { id: String },
+            Prompt { conv_id: String },
+            History { conv_id: String },
+            // ... and so on for every single file/dir type
+            Invalid,
+        }
+        ```
+    *   **`mod.rs`**: Contains the `resolve_path(&Path) -> FsNode` function which is a large `match` statement on the path components, turning a path string into a structured `FsNode`.
+
+*   **`handlers/` (Module)**: Breaks down the monolithic `impl Filesystem` into manageable pieces.
+    *   **`file_write.rs`**: Will contain a function like `handle_write(node: &FsNode, data: &[u8], state: &mut AppState) -> Result<usize, i32>`. The `i32` is the libc error code (e.g., `libc::EIO`). It will handle `echo "..." > /conversations/123/prompt`, updating configs, etc.
+    *   **`file_read.rs`**: Similar to write, but for `cat` operations.
+    *   This structure promotes TDD because you can test individual handlers with mock `FsNode`s and `AppState`.
+
+*   **`services/` (Module)**: Isolates all external network communication.
+    *   **`llm_api.rs`**: Contains async functions like `ask_model(prompt, history, config)`. This is where `async-openai` is used. This module knows nothing about filesystems, only about interacting with LLMs.
+    *   **`search_client.rs`**: Provides simple functions like `query_index(index_name, query_text)` that handle the ZMQ REQ/REP pattern, serialization (e.g., to JSON), and deserialization of the response from the Python service.
+
+#### **`tests/` Directory**
+
+*   By separating the logic into a library and modules, we can write powerful integration tests without actually mounting a FUSE filesystem.
+*   **`conversation_flow.rs`**: Can create an `AppState` in memory, simulate `mkdir`, `echo > prompt` by calling the handler functions directly, and assert that the `AppState` is updated correctly. It will use a mock LLM service to avoid real API calls.
+*   **`common/`**: Contains helpers like `fn setup_test_state() -> AppState` to reduce boilerplate in tests.
+
+This structure provides a robust, scalable, and testable foundation for building the ambitious and exciting `FuseLLM` project.
+```
+
+
+
+
+
+
+
+
+
+#### API 设计
+
+
 
 ### **5. 总结**
 
 这个设计方案将 LLM 的强大功能无缝地集成到了类 Unix 环境的核心工作流中。用户不再需要特殊的客户端或 Web UI，而是可以使用他们已经熟悉的、功能强大的 shell 工具链与 AI 进行深度、可编程的交互。从简单的问答到复杂的语义搜索，再到让 LLM 自我管理文件系统，所有操作都统一在“读写文件”这一简单而普适的模型之下，完美诠释了“一切皆文件”的设计哲学。
 
 
-
-
-
-**FuseLLM**
-
-**Mount your LLM.**
-
-**Everything is a file. Even the LLM.**
 
 
 
