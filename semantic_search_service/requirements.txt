@@ -1,0 +1,4 @@
+pyzmq
+sentence-transformers
+numpy
+sklearn
