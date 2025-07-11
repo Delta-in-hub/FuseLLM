@@ -1,8 +1,15 @@
 # 建议使用稍新一点的 CMake 版本，很多现代特性在 3.15 后更稳定
-cmake_minimum_required(VERSION 3.15)
-project(fusellm LANGUAGES CXX)
+cmake_minimum_required(VERSION 3.16)
+project(FuseLLM CXX)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# 将项目根目录和 external 目录添加到包含路径中，
+# 这样可以轻松地 #include "external/Fusepp/Fuse.h" 等文件。
+include_directories(${CMAKE_SOURCE_DIR})
+
+
 
 # --- 1. 查找底层 C 库和外部依赖 ---
 find_package(PkgConfig REQUIRED)
@@ -27,8 +34,19 @@ add_subdirectory(external/redis-plus-plus)
 
 # --- 3. 定义可执行文件 ---
 add_executable(fusellm
-    src/hello.cpp
+    src/main.cpp
+    # 当以下文件的实现（.cpp）被添加后，请取消注释
+    src/config/ConfigManager.cpp
+    src/fs/FuseLLM.cpp
+    src/fs/PathParser.cpp
+    src/services/LLMClient.cpp
+    src/services/ZmqClient.cpp
+    src/state/Session.cpp
+    src/state/SessionManager.cpp
 )
+
+# 为支持大文件（超过 2GB），添加此编译定义
+target_compile_definitions(fusellm PRIVATE _FILE_OFFSET_BITS=64)
 
 # --- 4. 链接所有依赖项目标 ---
 target_link_libraries(fusellm PRIVATE
@@ -43,10 +61,14 @@ target_link_libraries(fusellm PRIVATE
     cxxopts::cxxopts
 
     # --- 底层库 (通常由上面的目标自动传递，但保留可以增加健壮性) ---
+    PkgConfig::FUSE
     PkgConfig::Hiredis
     PkgConfig::ZeroMQ
     PkgConfig::CURL
 )
+
+# 显式添加 FUSE 的包含目录，确保头文件能被找到
+target_include_directories(fusellm PRIVATE ${FUSE_INCLUDE_DIRS})
 
 # --- 5. 设置构建选项 ---
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")

@@ -248,6 +248,12 @@
 使用Linux环境，使用 modern c++ 17 语言，通过 FUSE 实现以上功能。
 semantic_search 部分，通过 C++ 通过 zeromq 的 ipc 和 python 通信， python 使用llama_index实现。
 要求符合现代 C++ 开发的最佳实践。
+- scoped_lock
+- lock_guard
+- unique_ptr
+- shared_ptr
+- make_unique
+- make_shared
 
 
 推荐使用的库：
@@ -265,8 +271,46 @@ header only
 - https://github.com/olrea/openai-cpp
 
 
+注意 fuse 的回调是多线程的， 要处理好线程安全问题。
+
+
+
 #### 目录结构
 
+```
+src/
+├── CMakeLists.txt           # src/ 目录的 CMake 文件，定义 fusellm 可执行文件并链接所有库。
+├── main.cpp                 # 程序主入口。负责解析命令行参数、初始化日志和配置，并启动 FUSE 主循环。
+│
+├── common/                  # 存放项目范围内共享的通用数据结构和工具。
+│   └── data.h    # 定义核心数据结构，如 Message, Conversation, SearchResult 等。
+│
+├── config/                  # 负责配置文件的加载、解析和验证。
+│   ├── ConfigManager.h      # 声明 ConfigManager 类，提供访问全局、模型和会话配置的接口。
+│   └── ConfigManager.cpp    # 实现 ConfigManager 类，使用 tomlplusplus 库解析和验证 TOML 文件。
+│
+├── fs/                      # 文件系统的核心实现和路径路由。
+│   ├── FuseLLM.h            # 声明核心的 FuseLLM 类，它继承自 Fusepp 并作为 FUSE 回调的入口点。
+│   ├── FuseLLM.cpp          # 实现 FuseLLM 类，将 FUSE 请求分派给相应的 Handler。
+│   └── PathParser.h         # 定义一个工具类或函数，用于解析文件系统路径并识别其组件 (如会话ID、文件名等)。
+│
+├── handlers/                # 每个文件(夹)代表一个处理器，负责实现特定路径下的文件系统逻辑。
+│   ├── BaseHandler.h        # (可选但推荐) 定义一个所有 Handler 都应继承的基类接口。
+│   ├── RootHandler.h        # 处理根目录 (/) 的 ls 操作。
+│   ├── ModelsHandler.h      # 处理 /models 目录的 ls, cat, echo 操作。
+│   ├── ConfigHandler.h      # 处理 /config 目录及其下所有 TOML 文件的读写和验证逻辑。
+│   ├── ConversationsHandler.h # 处理 /conversations 目录的所有操作 (mkdir, rmdir, ls) 以及单个会话目录内的所有文件交互。
+│   └── SemanticSearchHandler.h # 处理 /semantic_search 目录的所有操作 (mkdir, rmdir) 以及 corpus 和 query 文件的逻辑。
+│
+├── services/                # 封装与外部服务通信的客户端。
+│   ├── LLMClient.h          # 声明与 LLM API (如 OpenAI) 通信的客户端接口。
+│   ├── LLMClient.cpp        # 实现 LLMClient，使用 openai-cpp 或类似库发送 HTTP 请求并处理响应。
+│   └── ZmqClient.h          # 声明并实现一个通过 ZeroMQ 与 Python 服务通信的客户端，用于发送搜索请求和接收结果。
+│
+└── state/                   # 管理文件系统的动态状态。
+    ├── Session.h            # 定义单个会话 (Conversation) 的状态，包括历史记录、上下文、配置覆盖等。
+    └── SessionManager.h     # 声明并实现 SessionManager 类，负责创建、删除、查找和管理所有活动的会话。
+```
 
 
 ### **5. 总结**
