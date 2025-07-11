@@ -1,102 +1,115 @@
 import zmq
 import json
 import logging
-from pathlib import Path
-from sentence_transformers import SentenceTransformer
-import numpy as np
-from sklearn.metrics.pairwise import cosine_similarity
+from llama_index.core import VectorStoreIndex, SimpleDirectoryReader, Document
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# In-memory storage for search indexes
-# Structure:
-# {
-#   "index_id_1": {
-#     "model": SentenceTransformer,
-#     "documents": {
-#       "file_path_1": "content_1",
-#       ...
-#     },
-#     "embeddings": {
-#       "file_path_1": np.array([...]),
-#       ...
-#     }
-#   },
-#   ...
-# }
-search_indexes = {}
+# In-memory storage for LlamaIndex objects
+# Structure: {"index_id": {"index": VectorStoreIndex, "documents": {doc_id: Document}}}
+indexes = {}
 
-class SearchService:
-    """Handles all semantic search operations."""
+def handle_request(req_data):
+    action = req_data.get('action')
+    index_id = req_data.get('index_id')
 
-    def __init__(self, embedding_model_name: str):
-        """
-        Initializes the search service.
+    if not action or not index_id:
+        return {"status": "error", "message": "'action' and 'index_id' are required."}
 
-        Args:
-            embedding_model_name (str): The name of the sentence-transformer model to use.
-        """
-        self.default_model_name = embedding_model_name
-
-    def _get_or_load_model(self, index_id: str) -> SentenceTransformer:
-        """Loads a model for an index if it's not already loaded."""
-        if index_id not in search_indexes:
-            raise ValueError(f"Index '{index_id}' does not exist.")
-        
-        index = search_indexes[index_id]
-        if "model" not in index or index["model"] is None:
-            logging.info(f"Loading model '{self.default_model_name}' for index '{index_id}'...")
-            index["model"] = SentenceTransformer(self.default_model_name)
-            logging.info(f"Model for index '{index_id}' loaded.")
-        return index["model"]
-
-    def create_index(self, index_id: str) -> dict:
-        """Creates a new, empty search index."""
-        if index_id in search_indexes:
-            return {"status": "Error", "data": {"message": f"Index '{index_id}' already exists."}}
-        
-        search_indexes[index_id] = {
-            "model": None, # Lazily loaded
-            "documents": {},
-            "embeddings": {},
+    # Create index if it doesn't exist for most actions
+    if index_id not in indexes and action in ["index", "query"]:
+        logging.info(f"Creating new in-memory index for id: {index_id}")
+        # Create an index with a dummy document, it can be extended later
+        dummy_doc = Document(text="Initial document", doc_id="_dummy")
+        indexes[index_id] = {
+            "index": VectorStoreIndex.from_documents([dummy_doc]),
+            "documents": {"_dummy": dummy_doc}
         }
-        logging.info(f"Created new search index: {index_id}")
-        return {"status": "Success"}
 
-    def delete_index(self, index_id: str) -> dict:
-        """Deletes an existing search index."""
-        if index_id not in search_indexes:
-            return {"status": "Error", "data": {"message": f"Index '{index_id}' not found."}}
+    if action == 'index':
+        doc_id = req_data.get('document_id')
+        content = req_data.get('content')
+        if not doc_id or content is None:
+            return {"status": "error", "message": "'document_id' and 'content' are required for indexing."}
         
-        del search_indexes[index_id]
-        logging.info(f"Deleted search index: {index_id}")
-        return {"status": "Success"}
-
-    def add_document(self, index_id: str, file_path: str, content: str) -> dict:
-        """Adds or updates a document in an index and generates its embedding."""
-        try:
-            model = self._get_or_load_model(index_id)
-            embedding = model.encode([content])[0]
-            
-            index = search_indexes[index_id]
-            index["documents"][file_path] = content
-            index["embeddings"][file_path] = embedding
-            
-            logging.info(f"Added/updated document '{file_path}' in index '{index_id}'")
-            return {"status": "Success"}
-        except Exception as e:
-            return {"status": "Error", "data": {"message": str(e)}}
-
-    def remove_document(self, index_id: str, file_path: str) -> dict:
-        """Removes a document from an index."""
-        if index_id not in search_indexes or file_path not in search_indexes[index_id]["documents"]:
-            return {"status": "Error", "data": {"message": f"Document '{file_path}' not found in index '{index_id}'."}}
+        logging.info(f"Indexing document '{doc_id}' in index '{index_id}'")
+        index_obj = indexes[index_id]["index"]
+        doc = Document(text=content, doc_id=doc_id)
         
-        del search_indexes[index_id]["documents"][file_path]
-        del search_indexes[index_id]["embeddings"][file_path]
-        logging.info(f"Removed document '{file_path}' from index '{index_id}'")
-        return {"status": "Success"}
+        # If document exists, update it. Otherwise, insert.
+        if doc_id in indexes[index_id]["documents"]:
+            index_obj.update_ref_doc(doc)
+        else:
+            index_obj.insert(doc)
+        
+        indexes[index_id]["documents"][doc_id] = doc
+        return {"status": "ok"}
+
+    elif action == 'delete':
+        doc_id = req_data.get('document_id')
+        if not doc_id:
+            return {"status": "error", "message": "'document_id' is required for deletion."}
+        
+        if index_id not in indexes or doc_id not in indexes[index_id]["documents"]:
+            return {"status": "error", "message": f"Document '{doc_id}' not found in index '{index_id}'."}
+
+        logging.info(f"Deleting document '{doc_id}' from index '{index_id}'")
+        indexes[index_id]["index"].delete_ref_doc(doc_id, delete_from_docstore=True)
+        del indexes[index_id]["documents"][doc_id]
+        return {"status": "ok"}
+
+    elif action == 'query':
+        query_text = req_data.get('content')
+        if not query_text:
+            return {"status": "error", "message": "'content' (the query text) is required for query."}
+
+        logging.info(f"Querying index '{index_id}' with: '{query_text[:50]}...'" )
+        index_obj = indexes[index_id]["index"]
+        query_engine = index_obj.as_query_engine()
+        response = query_engine.query(query_text)
+
+        results = [
+            {
+                "score": node.score,
+                "source": node.node.ref_doc_id or "N/A",
+                "content": node.get_content(),
+            }
+            for node in response.source_nodes
+        ]
+        return {"status": "ok", "results": results}
+
+    else:
+        return {"status": "error", "message": f"Unknown action: {action}"}
+
+def main():
+    service_url = "ipc:///tmp/fusellm-semantic.ipc"
+    context = zmq.Context()
+    socket = context.socket(zmq.REP)
+    socket.bind(service_url)
+    logging.info(f"ZMQ service listening on {service_url}")
+
+    try:
+        while True:
+            message = socket.recv_string()
+            logging.info(f"Received request: {message}")
+            try:
+                req_data = json.loads(message)
+                response = handle_request(req_data)
+            except Exception as e:
+                logging.error(f"Error processing request: {e}", exc_info=True)
+                response = {"status": "error", "message": str(e)}
+            
+            socket.send_string(json.dumps(response))
+    except KeyboardInterrupt:
+        logging.info("Shutting down service.")
+    finally:
+        socket.close()
+        context.term()
+
+if __name__ == '__main__':
+    main()
+
 
     def query_index(self, index_id: str, query_text: str, top_k: int = 5) -> dict:
         """Performs a semantic search query against an index."""

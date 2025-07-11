@@ -1,4 +1,2 @@
 pyzmq
-sentence-transformers
-numpy
-sklearn
+llama-index

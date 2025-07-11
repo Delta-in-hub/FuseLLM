@@ -1,45 +1,56 @@
-use fusellm::config::Config;
-use fusellm::error::Result;
-use fusellm::filesystem::FuseLlmFs;
-use fusellm::state::AppState;
-use std::env;
-use std::path::Path;
-use std::sync::{Arc, RwLock};
+use clap::Parser;
+use fuser::mount2;
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
-/// Main entry point for the FuseLLM application.
-///
-/// Responsibilities:
-/// 1. Parse command-line arguments (e.g., mount point).
-/// 2. Initialize logging.
-/// 3. Load configuration from file and environment variables.
-/// 4. Initialize the shared application state (`AppState`).
-/// 5. Instantiate the `FuseLlmFs`.
-/// 6. Mount the filesystem using the `fuse` library.
+use fusellm::config::GlobalConfig;
+use fusellm::fs::FuseLlm;
+use fusellm::state::FilesystemState;
 
-fn main() -> Result<()> {
-    // Placeholder for argument parsing and logging init
+#[derive(Parser, Debug)] // 让 `Args` 自动实现 `clap::Parser` 和 `Debug`
+#[command(
+    author,         // 从 Cargo.toml 读取作者信息
+    version,        // 从 Cargo.toml 读取版本号
+    about,          // 从 Cargo.toml 读取简短描述
+)]
+struct Args {
+    /// Mount point for the filesystem (required)
+    mountpoint: PathBuf, // 必需的位置参数
+
+    /// Path to configuration file (default: ./settings.toml)
+    #[arg(
+        short,            // 允许 `-c` 短参数
+        long,             // 允许 `--config` 长参数
+        default_value = ".settings.toml",  // 默认值
+    )]
+    config: PathBuf,
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // 1. Setup logging
     env_logger::init();
-    let mountpoint = env::args().nth(1).expect("Expected mountpoint as first argument");
 
-    // Placeholder for loading config
-    let config = Config::load(Path::new("config.toml"))?;
+    // 2. Parse command-line arguments
+    let args = Args::parse();
+    let mountpoint: PathBuf = args.mountpoint;
+    let config_path: PathBuf = args.config;
 
-    // Placeholder for initializing services and state
-    let llm_service = Arc::new(fusellm::services::llm_api::LlmService::new(
-        config.api_key.as_deref().unwrap_or(""),
-    ));
-    let search_client = Arc::new(RwLock::new(
-        fusellm::services::search_client::SearchClient::new(&config.semantic_search.zmq_address)?,
-    ));
-    let state = Arc::new(RwLock::new(AppState::new(config)));
+    // 3. Load configuration
+    let config = GlobalConfig::load(&config_path)?;
+    config.validate()?;
 
-    // Placeholder for creating and mounting the filesystem
-    let _filesystem = FuseLlmFs::new(state, llm_service, search_client);
+    // 4. Initialize state
+    let state = FilesystemState::new(config);
+    let state = Arc::new(Mutex::new(state));
 
-    // The actual fuse::mount call would go here, but is omitted
-    // to allow `cargo check` to pass without a real mount.
-    // fuse::mount(filesystem, &mountpoint, &[])?;
+    // 5. Create the FUSE filesystem instance
+    let filesystem = FuseLlm {
+        state: state.clone(),
+    };
+
+    // 6. Mount the filesystem
+    println!("Mounting FuseLLM at {}", mountpoint.display());
+    mount2(filesystem, &mountpoint, &[])?;
 
     Ok(())
 }
-

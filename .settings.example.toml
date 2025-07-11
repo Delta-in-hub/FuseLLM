@@ -1,0 +1,45 @@
+# FuseLLM 全局配置文件示例
+
+# (可选) 默认使用的模型名称。
+# 如果在命令行或特定操作中没有指定模型，将使用此模型。
+default_model = "deepseek-v3"
+
+# (可选) API 服务的基础 URL。
+base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+
+# (必填) 访问 API 服务所需的 API 密钥。
+api_key = "sk-"
+
+
+# [default_config] 部分定义了全局默认的模型参数。
+# 如果某个会话没有指定自己的参数，将使用这里的设置。
+# 如果此部分在 TOML 文件中被完全省略，程序将使用代码中硬编码的默认值。
+[default_config]
+
+# (可选) 模型生成的温度，控制随机性。
+# 必须在 0.0 到 2.0 之间。较高的值（如 1.0）使输出更随机，较低的值（如 0.2）使其更具确定性。
+# 如果不设置，将使用代码中的默认值 1.0。
+temperature = 0.9
+
+# (可选) 全局默认的系统提示。
+# 这个提示会在每次对话开始时发送给模型，以设定其角色和行为。
+# 如果不设置，将使用代码中的默认值 "You are a helpful assistant..."。
+# system_prompt = '''
+# You are a helpful and concise expert on the Rust programming language.
+# Provide code examples when relevant.
+# '''
+
+
+# [semantic_search] 部分配置语义搜索服务。
+# 如果此部分在 TOML 文件中被完全省略，程序将使用代码中硬编码的默认值。
+# [semantic_search]
+
+# (可选) 语义搜索服务的连接地址。
+# 可以是 IPC (Inter-Process Communication) 或 HTTP URL。
+# 如果不设置，将使用代码中的默认值 "ipc:///tmp/fusellm-semantic.ipc"。
+# service_url = "http://127.0.0.1:8001"
+
+# (可选) 用于生成文本嵌入的模型的名称。
+# 这取决于语义搜索服务支持哪些模型。
+# 如果不设置，将使用代码中的默认值 None。
+# embedding_model = "bge-large-en-v1.5"

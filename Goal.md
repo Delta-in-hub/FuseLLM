@@ -256,12 +256,13 @@ semantic_search 部分，通过 RUST 通过 zeromq 的 ipc 和 python 通信， 
 - TDD 测试驱动开发
   - https://doc.rust-lang.org/rust-by-example/testing.html
 - 推荐可以使用的库
-  - https://docs.rs/fuse/latest/fuse/  
+  - https://docs.rs/fuser/latest/fuser/
   - https://docs.rs/async-openai/latest/async_openai/
   - https://docs.rs/async-std/latest/async_std/
   - https://docs.rs/toml/latest/toml/
   - https://docs.rs/redis/latest/redis/
   - https://docs.rs/crate/zmq/latest
+  - https://docs.rs/serde_json/latest/serde_json/
 
 *   **状态管理**: 会话状态（历史、配置）需要被安全地管理。选择内存存储（简单）来保存状态。
 *   **并发控制**: 多个进程可能同时访问文件系统。需要为每个会话的关键操作（如写入 `prompt`）实现锁或队列机制，以防止竞争条件。
@@ -275,180 +276,739 @@ semantic_search 部分，通过 RUST 通过 zeromq 的 ipc 和 python 通信， 
 #### 目录结构
 
 ```
+
 fusellm/
-├── .cargo/
-│   └── config.toml          # Optional: for aliasing commands like `cargo t`
-├── .github/
-│   └── workflows/
-│       └── ci.yml           # Continuous Integration setup (testing, linting)
-├── .gitignore               # Standard Rust .gitignore
-├── Cargo.toml               # Project manifest with all dependencies
-├── README.md                # Project overview, setup, and usage instructions
-├── config.example.toml      # Example configuration for users to copy
-│
-├── semantic_search_service/ # Python service for semantic search
-│   ├── README.md            # Instructions for the search service
-│   ├── requirements.txt     # Python dependencies (pyzmq, llama-index, etc.)
-│   └── service.py           # Main Python script with ZMQ REP socket and llama_index logic
-│
+├── Cargo.toml          # Project dependencies (fuser, async-std, async-openai, etc.) and metadata
+├── semantic_search_service/      # Python backend for semantic search
+│   ├── requirements.txt  # Python dependencies (llama-index, zeromq, etc.)
+│   └── service.py      # The ZMQ server implementing the search logic
 ├── src/
-│   ├── main.rs              # Main entry point: parses args, loads config, mounts FS
-│   ├── lib.rs               # Library crate root, declares all modules
+│   ├── main.rs         # Entry point: parses arguments, sets up logging, mounts the FS
+│   ├── lib.rs          # Main library module, exports the Filesystem struct
+│   ├── config.rs       # Defines structs for TOML configuration (using serde)
+│   ├── state.rs        # Core state management: structs for FilesystemState, Conversation, SearchIndex
+│   ├── llm_api.rs      # Abstraction for communicating with LLM APIs (e.g., OpenAI)
 │   │
-│   ├── config.rs            # Defines Config structs (Global, Model, etc.) and validation logic
-│   ├── error.rs             # Defines the project's custom Error enum and Result type
+│   ├── semantic/       # Module for semantic search communication
+│   │   ├── mod.rs
+│   │   └── client.rs   # ZMQ client to talk to the semantic_search_service/service.py
 │   │
-│   ├── filesystem.rs        # Defines the main `FuseLLMFs` struct and its `impl Filesystem`
-│   │
-│   ├── state/               # Module for managing the live state of the filesystem
-│   │   ├── mod.rs           # Declares sub-modules and the main `AppState` struct
-│   │   ├── conversation.rs  # `Conversation` struct: history, context, config, etc.
-│   │   └── search_index.rs  # `SearchIndex` struct: tracks corpus files
-│   │
-│   ├── vfs/                 # Virtual File System: maps paths to internal logic
-│   │   ├── mod.rs           # Declares the `resolve_path` function
-│   │   └── node.rs          # `FsNode` enum: represents every possible file/dir type
-│   │
-│   ├── handlers/            # FUSE operation handlers, called by filesystem.rs
-│   │   ├── mod.rs           # Declares all handler modules
-│   │   ├── directory.rs     # Logic for readdir, mkdir, rmdir
-│   │   ├── file_read.rs     # Logic for `read()` operations (cat prompt, history, etc.)
-│   │   ├── file_write.rs    # Logic for `write()` operations (echo > prompt, config, etc.)
-│   │   ├── metadata.rs      # Logic for `getattr()`, `setattr()`, etc.
-│   │   └── symlink.rs       # Logic for `readlink()` (for `/conversations/latest`)
-│   │
-│   └── services/            # Backend service integrations
-│       ├── mod.rs           # Declares service modules
-│       ├── llm_api.rs       # Async functions to interact with LLM APIs (async-openai)
-│       └── search_client.rs # ZMQ client (REQ socket) to talk to the Python service
+│   └── fs/             # The main FUSE Filesystem implementation
+│       ├── mod.rs      # The main Filesystem struct and its `impl Filesystem for FuseLlm`
+│       ├── constants.rs  # Inode numbers, file names, etc.
+│       └── handlers/   # Each file/directory type gets its own handler module
+│           ├── mod.rs
+│           ├── root.rs         # Logic for the root directory (/)
+│           ├── models.rs       # Logic for /models and its children
+│           ├── conversations.rs  # Logic for /conversations and its children (prompt, history, etc.)
+│           ├── config.rs       # Logic for /config and its children
+│           └── semantic_search.rs # Logic for /semantic_search and its children
 │
 └── tests/
-    ├── integration/         # Integration tests
-    │   ├── mod.rs
-    │   ├── config_parsing.rs  # Tests for loading and validating TOML configs
-    │   ├── conversation_flow.rs # Simulates a full chat session (mocks LLM API)
-    │   └── search_protocol.rs # Tests ZMQ communication (mocks Python service)
-    └── common/              # Test utilities and setup functions
-        └── mod.rs           # Helper functions for creating mock state, etc.
-```
-
-
+    ├── integration_tests.rs # High-level tests that interact with a mock FS
+    └── unit_tests/
+        └── config_parsing.rs # Example unit test
 
 ```
-
-### **File-by-File Explanation**
-
-#### **Root Directory**
-
-*   **`Cargo.toml`**: The heart of the Rust project. It will contain dependencies like:
-    ```toml
-    [dependencies]
-    fuse = "0.3.1"
-    async-openai = "0.29.0"
-    async-std = { version = "1.13.1", features = ["attributes"] }
-    toml = "0.9.1"
-    zmq = "0.10.0"
-    serde = { version = "1.0", features = ["derive"] }
-    serde_json = "1.0"
-    log = "0.4"
-    env_logger = "0.11"
-    # ... and others for command-line parsing, etc.
-    ```
-*   **`config.example.toml`**: A user-friendly template.
-    ```toml
-    # FuseLLM Configuration
-
-    # API key for OpenAI. Can also be set via OPENAI_API_KEY environment variable.
-    api_key = "sk-..." 
-
-    [default_model]
-    name = "gpt-4"
-    temperature = 0.7
-    system_prompt = "You are a helpful assistant."
-
-    # Per-model overrides
-    [models.gpt-3.5]
-    temperature = 1.0
-
-    [semantic_search]
-    # ZMQ address for the Python semantic search service
-    zmq_address = "ipc:///tmp/fusellm-search.ipc"
-    embedding_model = "default"
-    ```
-*   **`semantic_search_service/`**: Self-contained Python component. This clean separation prevents mixing Python and Rust tooling. `service.py` implements the ZMQ server and `llama_index` logic.
-
-#### **`src/` Directory**
-
-*   **`main.rs`**: The executable's entry point. Its job is minimal:
-    1.  Parse command-line arguments (e.g., mount point).
-    2.  Initialize logging (`env_logger`).
-    3.  Load configuration from `config.toml` and environment variables.
-    4.  Create the shared `AppState` (application state).
-    5.  Instantiate `FuseLlmFs` with the state.
-    6.  Call `fuse::mount()` to start the filesystem.
-
-*   **`lib.rs`**: Makes the core logic a library, which is essential for integration testing. It just declares the public modules: `pub mod config; pub mod error; ...`.
-
-*   **`config.rs`**: Contains Rust structs that mirror the TOML configuration file, using `serde::Deserialize` for automatic parsing and `validator` for validation logic.
-
-*   **`error.rs`**: Defines a comprehensive `enum FuseLlmError` that wraps errors from `std::io`, `fuse`, `toml`, `zmq`, `async_openai`, etc. This allows functions to return a single, consistent `Result` type.
-
-*   **`filesystem.rs`**: This is the core of the FUSE implementation. It will contain the `impl Filesystem for FuseLlmFs { ... }`. Each function (`getattr`, `read`, `write`, etc.) will:
-    1.  Call `vfs::resolve_path()` to understand what file/directory is being operated on.
-    2.  Lock the shared `AppState`.
-    3.  Dispatch the request to the appropriate handler in the `handlers/` module.
-
-*   **`state/` (Module)**: Manages all dynamic data.
-    *   **`mod.rs`**: Defines `AppState`, which will be wrapped in `Arc<RwLock<AppState>>` and shared across all FUSE threads. It holds `HashMap`s for conversations and search indexes.
-    *   **`conversation.rs`**: `struct Conversation` holds a single chat's `id`, `history` (a `Vec` of messages), `context` (`String`), and its specific `config`.
-    *   **`search_index.rs`**: `struct SearchIndex` holds the state for a semantic search instance, primarily the list of files in its `corpus`.
-
-*   **`vfs/` (Module)**: The "Virtual File System" router.
-    *   **`node.rs`**: The most critical enum. It maps a path to a logical entity.
-        ```rust
-        // Example FsNode enum
-        pub enum FsNode {
-            Root,
-            ModelsDir,
-            ModelFile { name: String },
-            ConversationsDir,
-            Conversation { id: String },
-            Prompt { conv_id: String },
-            History { conv_id: String },
-            // ... and so on for every single file/dir type
-            Invalid,
-        }
-        ```
-    *   **`mod.rs`**: Contains the `resolve_path(&Path) -> FsNode` function which is a large `match` statement on the path components, turning a path string into a structured `FsNode`.
-
-*   **`handlers/` (Module)**: Breaks down the monolithic `impl Filesystem` into manageable pieces.
-    *   **`file_write.rs`**: Will contain a function like `handle_write(node: &FsNode, data: &[u8], state: &mut AppState) -> Result<usize, i32>`. The `i32` is the libc error code (e.g., `libc::EIO`). It will handle `echo "..." > /conversations/123/prompt`, updating configs, etc.
-    *   **`file_read.rs`**: Similar to write, but for `cat` operations.
-    *   This structure promotes TDD because you can test individual handlers with mock `FsNode`s and `AppState`.
-
-*   **`services/` (Module)**: Isolates all external network communication.
-    *   **`llm_api.rs`**: Contains async functions like `ask_model(prompt, history, config)`. This is where `async-openai` is used. This module knows nothing about filesystems, only about interacting with LLMs.
-    *   **`search_client.rs`**: Provides simple functions like `query_index(index_name, query_text)` that handle the ZMQ REQ/REP pattern, serialization (e.g., to JSON), and deserialization of the response from the Python service.
-
-#### **`tests/` Directory**
-
-*   By separating the logic into a library and modules, we can write powerful integration tests without actually mounting a FUSE filesystem.
-*   **`conversation_flow.rs`**: Can create an `AppState` in memory, simulate `mkdir`, `echo > prompt` by calling the handler functions directly, and assert that the `AppState` is updated correctly. It will use a mock LLM service to avoid real API calls.
-*   **`common/`**: Contains helpers like `fn setup_test_state() -> AppState` to reduce boilerplate in tests.
-
-This structure provides a robust, scalable, and testable foundation for building the ambitious and exciting `FuseLLM` project.
-```
-
-
-
-
-
-
 
 
 
 #### API 设计
 
+
+```
+OK, here is the complete, unabridged API design for every file as requested.
+
+---
+
+### `src/error.rs`
+
+```rust
+use std::io;
+use thiserror::Error;
+
+/// A unified Result type for the FuseLLM application.
+pub type Result<T> = std::result::Result<T, FuseLlmError>;
+
+/// The primary error enum for all possible failures in FuseLLM.
+#[derive(Debug, Error)]
+pub enum FuseLlmError {
+    #[error("I/O error: {0}")]
+    Io(#[from] io::Error),
+
+    #[error("TOML deserialization error: {0}")]
+    TomlDe(#[from] toml::de::Error),
+
+    #[error("TOML serialization error: {0}")]
+    TomlSer(#[from] toml::ser::Error),
+
+    #[error("LLM API error: {0}")]
+    LlmApi(#[from] async_openai::error::OpenAIError),
+    
+    #[error("Semantic search service communication error: {0}")]
+    SemanticSearch(String),
+
+    #[error("ZMQ communication error: {0}")]
+    Zmq(#[from] zmq::Error),
+    
+    #[error("JSON serialization/deserialization error: {0}")]
+    Json(#[from] serde_json::Error),
+
+    #[error("Invalid path or entry not found")]
+    NotFound,
+
+    #[error("Permission denied")]
+    PermissionDenied,
+
+    #[error("Operation is not supported for this entry")]
+    NotSupported,
+
+    #[error("Filesystem entry already exists")]
+    AlreadyExists,
+
+    #[error("Directory is not empty")]
+    NotEmpty,
+
+    #[error("Invalid argument provided: {0}")]
+    InvalidArgument(String),
+    
+    #[error("Operation requires a file, but entry is a directory")]
+    IsDirectory,
+
+    #[error("Operation requires a directory, but entry is a file")]
+    NotDirectory,
+
+    #[error("Entry is read-only")]
+    ReadOnly,
+    
+    #[error("Internal state is locked or poisoned")]
+    StateLock,
+}
+
+impl From<FuseLlmError> for i32 {
+    /// Converts the custom error into a standard C integer error code for FUSE.
+    fn from(err: FuseLlmError) -> Self {
+        match err {
+            FuseLlmError::NotFound => libc::ENOENT,
+            FuseLlmError::PermissionDenied => libc::EPERM,
+            FuseLlmError::Io(_) => libc::EIO,
+            FuseLlmError::AlreadyExists => libc::EEXIST,
+            FuseLlmError::NotEmpty => libc::ENOTEMPTY,
+            FuseLlmError::InvalidArgument(_) => libc::EINVAL,
+            FuseLlmError::IsDirectory => libc::EISDIR,
+            FuseLlmError::NotDirectory => libc::ENOTDIR,
+            FuseLlmError::ReadOnly => libc::EROFS,
+            FuseLlmError::NotSupported => libc::ENOSYS,
+            _ => libc::EIO, // Default to a generic I/O error for other cases
+        }
+    }
+}
+```
+
+---
+
+### `src/config.rs`
+
+```rust
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+use std::path::Path;
+use crate::error::Result;
+
+/// Settings applicable to any LLM model interaction.
+/// All fields are optional to allow for easy merging and overriding.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+pub struct ModelSettings {
+    pub temperature: Option<f32>,
+    pub top_p: Option<f32>,
+    pub max_tokens: Option<u16>,
+}
+
+/// The top-level configuration loaded from `settings.toml`.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+pub struct GlobalConfig {
+    pub default_model: Option<String>,
+    #[serde(flatten)]
+    pub default_settings: ModelSettings,
+    #[serde(default)]
+    pub models: BTreeMap<String, ModelSettings>,
+}
+
+impl GlobalConfig {
+    /// Loads the global configuration from a specified TOML file.
+    pub fn load_from_path(path: &Path) -> Result<Self> {
+        unimplemented!();
+    }
+}
+
+/// Configuration specific to a single conversation session.
+/// These settings have the highest precedence.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+pub struct SessionConfig {
+    pub model: Option<String>,
+    pub system_prompt: Option<String>,
+    #[serde(flatten)]
+    pub settings: ModelSettings,
+}
+
+impl SessionConfig {
+    /// Merges this session's configuration with the global configuration
+    /// to produce the final, effective settings for an LLM API call.
+    /// It returns the model name to use and the final combined settings.
+    pub fn get_effective_settings<'a>(
+        &'a self, 
+        global_config: &'a GlobalConfig
+    ) -> (&'a str, ModelSettings) {
+        unimplemented!();
+    }
+}
+```
+
+---
+
+### `src/state.rs`
+
+```rust
+use crate::config::{GlobalConfig, SessionConfig, ModelSettings};
+use std::collections::BTreeMap;
+use std::sync::{Arc, RwLock};
+use std::time::SystemTime;
+
+pub type SharedState = Arc<RwLock<FilesystemState>>;
+
+/// A message within a conversation's history.
+#[derive(Debug, Clone)]
+pub enum ChatMessage {
+    System(String),
+    User(String),
+    Assistant(String),
+}
+
+/// Represents a single, stateful conversation.
+#[derive(Debug)]
+pub struct Conversation {
+    pub id: String,
+    pub config: SessionConfig,
+    pub history: Vec<ChatMessage>,
+    pub context: String,
+    pub latest_response: String,
+    pub created_at: SystemTime,
+    pub last_modified: SystemTime,
+}
+
+impl Conversation {
+    /// Creates a new conversation with a given ID, inheriting from global config.
+    pub fn new(id: String, global_config: &GlobalConfig) -> Self {
+        unimplemented!();
+    }
+}
+
+/// Represents a semantic search index.
+#[derive(Debug)]
+pub struct SearchIndex {
+    pub id: String,
+    /// A list of file names that have been added to the corpus.
+    pub corpus_files: Vec<String>,
+    /// The last query's result, formatted for reading.
+    pub latest_query_result: String,
+    pub created_at: SystemTime,
+}
+
+impl SearchIndex {
+    pub fn new(id: String) -> Self {
+        unimplemented!();
+    }
+}
+
+/// The stateless representation of a model for direct interaction.
+#[derive(Debug)]
+pub struct StatelessModel {
+    pub id: String,
+    pub latest_response: String,
+}
+
+/// The single source of truth for the filesystem's dynamic state.
+#[derive(Debug)]
+pub struct FilesystemState {
+    pub config: GlobalConfig,
+    pub conversations: BTreeMap<String, Conversation>,
+    pub search_indexes: BTreeMap<String, SearchIndex>,
+    pub stateless_models: BTreeMap<String, StatelessModel>,
+    /// The session ID of the most recently used conversation.
+    pub latest_session_id: Option<String>,
+    /// A counter for dynamically assigning new inodes.
+    next_inode: u64,
+}
+
+impl FilesystemState {
+    /// Initializes the filesystem state with a global config.
+    pub fn new(config: GlobalConfig) -> Self {
+        unimplemented!();
+    }
+    
+    /// Atomically retrieves the next available inode number.
+    pub fn allocate_inode(&mut self) -> u64 {
+        unimplemented!();
+    }
+
+    /// Updates the `latest_session_id` and the session's last_modified time.
+    pub fn mark_session_used(&mut self, session_id: &str) {
+        unimplemented!();
+    }
+}
+```
+
+---
+
+### `src/llm_api.rs`
+
+```rust
+use async_openai::{Client, types::{CreateChatCompletionRequestArgs, ChatCompletionRequestMessage}};
+use crate::config::ModelSettings;
+use crate::error::Result;
+use crate::state::ChatMessage;
+
+/// A client for interacting with a Large Language Model.
+#[derive(Clone)]
+pub struct LlmClient {
+    client: Client,
+}
+
+impl LlmClient {
+    /// Creates a new LLM client, typically configured from environment variables.
+    pub fn new() -> Result<Self> {
+        unimplemented!();
+    }
+
+    /// Sends a request to the LLM and returns the text of the assistant's response.
+    /// This is an async function and will need to be handled by a runtime.
+    pub async fn chat(
+        &self,
+        model: &str,
+        messages: &[ChatMessage],
+        settings: &ModelSettings,
+    ) -> Result<String> {
+        unimplemented!();
+    }
+}
+
+/// Utility to convert internal ChatMessage enum to the one required by async-openai.
+fn to_openai_messages(messages: &[ChatMessage]) -> Vec<ChatCompletionRequestMessage> {
+    unimplemented!();
+}
+```
+
+---
+
+### `src/semantic/client.rs`
+
+```rust
+use crate::error::{Result, FuseLlmError};
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum Request {
+    CreateIndex { index_id: String },
+    DeleteIndex { index_id: String },
+    AddDocument { index_id: String, file_name: String, content: String },
+    RemoveDocument { index_id: String, file_name: String },
+    Query { index_id: String, text: String },
+    Ping,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum Response {
+    Success,
+    Pong,
+    QueryResult(String),
+    Error(String),
+}
+
+/// A synchronous client for the ZMQ semantic search service.
+pub struct SemanticClient {
+    socket: zmq::Socket,
+}
+
+impl SemanticClient {
+    /// Creates a new client and connects to the ZMQ endpoint.
+    pub fn new(endpoint: &str) -> Result<Self> {
+        unimplemented!();
+    }
+
+    /// Sends a request and blocks until a response is received.
+    fn send_request(&self, request: &Request) -> Result<Response> {
+        unimplemented!();
+    }
+
+    pub fn create_index(&self, index_id: &str) -> Result<()> { unimplemented!(); }
+    pub fn delete_index(&self, index_id: &str) -> Result<()> { unimplemented!(); }
+    pub fn add_document(&self, index_id: &str, file_name: &str, content: &str) -> Result<()> { unimplemented!(); }
+    pub fn remove_document(&self, index_id: &str, file_name: &str) -> Result<()> { unimplemented!(); }
+    pub fn query(&self, index_id: &str, text: &str) -> Result<String> { unimplemented!(); }
+    
+    /// Checks if the Python service is alive and responding.
+    pub fn ping(&self) -> Result<()> { unimplemented!(); }
+}
+```
+
+---
+
+### `src/fs/constants.rs`
+
+```rust
+pub const ROOT_DIR_INO: u64 = 1;
+pub const CONFIG_DIR_INO: u64 = 2;
+pub const MODELS_DIR_INO: u64 = 3;
+pub const CONVERSATIONS_DIR_INO: u64 = 4;
+pub const SEMANTIC_SEARCH_DIR_INO: u64 = 5;
+
+// File inodes within CONFIG_DIR
+pub const GLOBAL_SETTINGS_INO: u64 = 10;
+pub const CONFIG_MODELS_DIR_INO: u64 = 11;
+
+// Symlinks
+pub const MODELS_DEFAULT_SYMLINK_INO: u64 = 50;
+pub const CONVERSATIONS_LATEST_SYMLINK_INO: u64 = 51;
+
+// The start of the dynamic inode range.
+// Any inode number >= DYNAMIC_INODE_START is allocated at runtime.
+pub const DYNAMIC_INODE_START: u64 = 1_000_000;
+```
+
+---
+
+### `src/fs/mod.rs`
+
+```rust
+use fuser::{
+    Filesystem, MountOption, ReplyAttr, ReplyData, ReplyDirectory, ReplyEmpty,
+    ReplyEntry, ReplyLseek, ReplyOpen, ReplyWrite, ReplyXattr, Request,
+    FUSE_ROOT_ID,
+};
+use std::ffi::OsStr;
+
+use crate::llm_api::LlmClient;
+use crate::semantic::client::SemanticClient;
+use crate::state::SharedState;
+
+pub mod constants;
+pub mod handlers;
+
+/// The main struct representing our FUSE filesystem.
+pub struct FuseLlm {
+    pub state: SharedState,
+    pub llm_client: LlmClient,
+    pub semantic_client: SemanticClient,
+    /// An async runtime to execute async tasks (like LLM calls) from sync FUSE calls.
+    pub runtime: async_std::runtime::Runtime, 
+}
+
+impl Filesystem for FuseLlm {
+    fn lookup(&mut self, _req: &Request, parent: u64, name: &OsStr, reply: ReplyEntry) {
+        unimplemented!(); 
+    }
+
+    fn getattr(&mut self, _req: &Request, ino: u64, reply: ReplyAttr) {
+        unimplemented!();
+    }
+
+    fn read(
+        &mut self, _req: &Request, ino: u64, _fh: u64, offset: i64, 
+        _size: u32, _flags: i32, _lock_owner: Option<u64>, reply: ReplyData
+    ) {
+        unimplemented!();
+    }
+    
+    fn write(
+        &mut self, _req: &Request, ino: u64, _fh: u64, _offset: i64,
+        data: &[u8], _write_flags: u32, _flags: i32, _lock_owner: Option<u64>,
+        reply: ReplyWrite,
+    ) {
+        unimplemented!();
+    }
+
+    fn readdir(
+        &mut self, _req: &Request, ino: u64, _fh: u64, offset: i64,
+        reply: ReplyDirectory,
+    ) {
+        unimplemented!();
+    }
+    
+    fn mkdir(
+        &mut self, _req: &Request, parent: u64, name: &OsStr,
+        _mode: u32, _umask: u32, reply: ReplyEntry
+    ) {
+        unimplemented!();
+    }
+
+    fn rmdir(&mut self, _req: &Request, parent: u64, name: &OsStr, reply: ReplyEmpty) {
+        unimplemented!();
+    }
+
+    fn readlink(&mut self, _req: &Request, ino: u64, reply: ReplyData) {
+        unimplemented!();
+    }
+
+    fn setattr(
+        &mut self, _req: &Request, ino: u64, _mode: Option<u32>, _uid: Option<u32>,
+        _gid: Option<u32>, size: Option<u64>, _atime: Option<fuser::TimeOrNow>,
+        _mtime: Option<fuser::TimeOrNow>, _ctime: Option<std::time::SystemTime>,
+        _fh: Option<u64>, _crtime: Option<std::time::SystemTime>,
+        _chgtime: Option<std::time::SystemTime>, _bkuptime: Option<std::time::SystemTime>,
+        _flags: Option<u32>, reply: ReplyAttr
+    ) {
+        // Primarily used for `truncate` behavior when writing to files.
+        unimplemented!();
+    }
+
+    // ... Other trait methods like open, release, create, unlink etc. will be stubs or simple pass-throughs
+    // as our filesystem logic is mostly contained in read/write/mkdir/rmdir.
+}
+```
+
+---
+
+### `src/fs/handlers/*.rs`
+
+#### **`src/fs/handlers/root.rs`**
+```rust
+use fuser::{ReplyDirectory, FileType};
+use crate::fs::constants::*;
+use crate::FuseLlm;
+use crate::error::Result;
+
+/// Handles `ls /`
+pub fn readdir(fs: &FuseLlm, reply: &mut ReplyDirectory) -> Result<()> {
+    // Add ., .., config, models, conversations, semantic_search
+    unimplemented!();
+}
+```
+
+#### **`src/fs/handlers/config.rs`**
+```rust
+use fuser::{ReplyAttr, ReplyData, ReplyDirectory, ReplyWrite};
+use crate::FuseLlm;
+use crate::error::Result;
+
+/// Handles `ls /config` and `ls /config/models/[name]`
+pub fn readdir(fs: &FuseLlm, ino: u64, reply: &mut ReplyDirectory) -> Result<()> {
+    unimplemented!();
+}
+
+/// Handles `cat /config/settings.toml` and other config files
+pub fn read_config_file(fs: &FuseLlm, ino: u64, reply: ReplyData) -> Result<()> {
+    unimplemented!();
+}
+
+/// Handles `echo "..." > /config/settings.toml`
+pub fn write_config_file(fs: &mut FuseLlm, ino: u64, data: &[u8], reply: ReplyWrite) -> Result<()> {
+    unimplemented!();
+}
+```
+
+#### **`src/fs/handlers/models.rs`**
+```rust
+use fuser::{ReplyData, ReplyDirectory, ReplyWrite};
+use crate::FuseLlm;
+use crate::error::Result;
+
+/// Handles `ls /models`
+pub fn readdir(fs: &FuseLlm, reply: &mut ReplyDirectory) -> Result<()> {
+    unimplemented!();
+}
+
+/// Handles `cat /models/[name]`
+pub fn read_model_response(fs: &FuseLlm, model_name: &str, reply: ReplyData) -> Result<()> {
+    unimplemented!();
+}
+
+/// Handles `echo "..." > /models/[name]`
+pub fn write_to_model(fs: &mut FuseLlm, model_name: &str, data: &[u8], reply: ReplyWrite) -> Result<()> {
+    unimplemented!();
+}
+```
+
+#### **`src/fs/handlers/conversations.rs`**
+```rust
+use fuser::{ReplyData, ReplyDirectory, ReplyEmpty, ReplyEntry, ReplyWrite};
+use crate::FuseLlm;
+use crate::error::Result;
+
+/// Handles `ls /conversations`
+pub fn readdir(fs: &FuseLlm, reply: &mut ReplyDirectory) -> Result<()> {
+    unimplemented!();
+}
+
+/// Handles `mkdir /conversations/my-chat`
+pub fn mkdir(fs: &mut FuseLlm, name: &str, reply: ReplyEntry) -> Result<()> {
+    unimplemented!();
+}
+
+/// Handles `rmdir /conversations/my-chat`
+pub fn rmdir(fs: &mut FuseLlm, name: &str, reply: ReplyEmpty) -> Result<()> {
+    unimplemented!();
+}
+
+/// Handles `cat /conversations/[id]/prompt`
+pub fn read_prompt(fs: &FuseLlm, session_id: &str, reply: ReplyData) -> Result<()> {
+    unimplemented!();
+}
+
+/// Handles `echo "..." > /conversations/[id]/prompt`
+pub fn write_prompt(fs: &mut FuseLlm, session_id: &str, data: &[u8], reply: ReplyWrite) -> Result<()> {
+    unimplemented!();
+}
+
+/// Handles `cat /conversations/[id]/history`
+pub fn read_history(fs: &FuseLlm, session_id: &str, reply: ReplyData) -> Result<()> {
+    unimplemented!();
+}
+
+/// Handles `cat /conversations/[id]/context`
+pub fn read_context(fs: &FuseLlm, session_id: &str, reply: ReplyData) -> Result<()> {
+    unimplemented!();
+}
+
+/// Handles `echo "..." > /conversations/[id]/context`
+pub fn write_context(fs: &mut FuseLlm, session_id: &str, data: &[u8], reply: ReplyWrite) -> Result<()> {
+    unimplemented!();
+}
+
+// ... other handlers for the session's 'config' subdirectory
+```
+
+#### **`src/fs/handlers/semantic_search.rs`**
+```rust
+use fuser::{ReplyData, ReplyDirectory, ReplyEmpty, ReplyEntry, ReplyWrite};
+use crate::FuseLlm;
+use crate::error::Result;
+
+/// Handles `ls /semantic_search`
+pub fn readdir(fs: &FuseLlm, reply: &mut ReplyDirectory) -> Result<()> {
+    unimplemented!();
+}
+
+/// Handles `mkdir /semantic_search/my-index`
+pub fn mkdir(fs: &mut FuseLlm, name: &str, reply: ReplyEntry) -> Result<()> {
+    unimplemented!();
+}
+
+/// Handles `rmdir /semantic_search/my-index`
+pub fn rmdir(fs: &mut FuseLlm, name: &str, reply: ReplyEmpty) -> Result<()> {
+    unimplemented!();
+}
+
+/// Handles `echo "..." > /semantic_search/[id]/query`
+pub fn write_query(fs: &mut FuseLlm, index_id: &str, data: &[u8], reply: ReplyWrite) -> Result<()> {
+    unimplemented!();
+}
+
+/// Handles `cat /semantic_search/[id]/query`
+pub fn read_query_result(fs: &FuseLlm, index_id: &str, reply: ReplyData) -> Result<()> {
+    unimplemented!();
+}
+
+/// Logic for when a file is created/written in the `corpus` directory.
+/// Note: This is triggered by `create` or `write` syscalls on a file inside the corpus dir.
+pub fn write_to_corpus(fs: &mut FuseLlm, index_id: &str, file_name: &str, data: &[u8]) -> Result<()> {
+    unimplemented!();
+}
+
+/// Logic for when a file is deleted from the `corpus` directory.
+/// Note: This is triggered by an `unlink` syscall.
+pub fn remove_from_corpus(fs: &mut FuseLlm, index_id: &str, file_name: &str) -> Result<()> {
+    unimplemented!();
+}
+```
+
+---
+
+### `src/main.rs`
+
+```rust
+use clap::Parser;
+use fuser::MountOption;
+use std::env;
+use std::path::PathBuf;
+use std::sync::{Arc, RwLock};
+
+mod config;
+mod error;
+mod fs;
+// The lib.rs file is often omitted in a binary crate if all modules are declared here.
+// mod lib; 
+mod llm_api;
+mod semantic;
+mod state;
+
+use config::GlobalConfig;
+use error::Result;
+use fs::FuseLlm;
+use llm_api::LlmClient;
+use semantic::client::SemanticClient;
+use state::{FilesystemState, SharedState};
+
+
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// Path to the mountpoint for the FUSE filesystem
+    #[arg(required = true)]
+    mount_point: PathBuf,
+
+    /// Path to the global settings TOML file
+    #[arg(short, long, default_value = "settings.toml")]
+    config: PathBuf,
+
+    /// ZMQ endpoint for the semantic search service
+    #[arg(short, long, default_value = "ipc:///tmp/semantic.ipc")]
+    semantic_endpoint: String,
+}
+
+fn main() -> Result<()> {
+    env_logger::init();
+    let args = Args::parse();
+
+    log::info!("Starting FuseLLM...");
+    log::info!("Mounting at: {}", args.mount_point.display());
+    log::info!("Loading config from: {}", args.config.display());
+
+    let global_config = GlobalConfig::load_from_path(&args.config)?;
+    let state = FilesystemState::new(global_config);
+    let shared_state: SharedState = Arc::new(RwLock::new(state));
+
+    let llm_client = LlmClient::new()?;
+    let semantic_client = SemanticClient::new(&args.semantic_endpoint)?;
+    
+    // Check if the semantic service is running
+    if let Err(e) = semantic_client.ping() {
+        log::error!("Could not connect to semantic search service at {}: {}", args.semantic_endpoint, e);
+        log::error!("Please ensure the Python service is running.");
+        return Err(e);
+    }
+    log::info!("Semantic search service connected successfully.");
+
+    let filesystem = FuseLlm {
+        state: shared_state,
+        llm_client,
+        semantic_client,
+        runtime: async_std::runtime::new().unwrap(),
+    };
+
+    let options = vec![
+        MountOption::AutoUnmount,
+        MountOption::FSName("fusellm".to_string()),
+        MountOption::DefaultPermissions,
+        MountOption::AllowOther, // Requires user_allow_other in /etc/fuse.conf
+    ];
+
+    fuser::mount2(filesystem, &args.mount_point, &options)?;
+
+    Ok(())
+}
+```
+
+```
 
 
 ### **5. 总结**
