@@ -1,0 +1,12 @@
+[submodule "external/cppzmq"]
+	path = external/cppzmq
+	url = https://github.com/zeromq/cppzmq.git
+[submodule "external/Fusepp"]
+	path = external/Fusepp
+	url = https://github.com/jachappell/Fusepp.git
+[submodule "external/redis-plus-plus"]
+	path = external/redis-plus-plus
+	url = https://github.com/sewenew/redis-plus-plus.git
+[submodule "external/openai-cpp"]
+	path = external/openai-cpp
+	url = https://github.com/olrea/openai-cpp.git

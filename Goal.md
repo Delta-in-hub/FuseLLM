@@ -241,75 +241,31 @@
 
 
 
-### **4. 技术实现 (Rust 实现层面)**
+### **4. 技术实现 (C++ 实现层面)**
 
 
 
-使用Linux环境，使用 RUST 语言，通过 FUSE 实现以上功能。
-
-semantic_search 部分，通过 RUST 通过 zeromq 的 ipc 和 python 通信， python 使用llama_index实现。
-
-要求符合现代 RUST 开发的最佳实践。
+使用Linux环境，使用 modern c++ 17 语言，通过 FUSE 实现以上功能。
+semantic_search 部分，通过 C++ 通过 zeromq 的 ipc 和 python 通信， python 使用llama_index实现。
+要求符合现代 C++ 开发的最佳实践。
 
 
-
-- TDD 测试驱动开发
-  - https://doc.rust-lang.org/rust-by-example/testing.html
-- 推荐可以使用的库
-  - https://docs.rs/fuser/latest/fuser/
-  - https://docs.rs/async-openai/latest/async_openai/
-  - https://docs.rs/async-std/latest/async_std/
-  - https://docs.rs/toml/latest/toml/
-  - https://docs.rs/redis/latest/redis/
-  - https://docs.rs/crate/zmq/latest
-  - https://docs.rs/serde_json/latest/serde_json/
-
-*   **状态管理**: 会话状态（历史、配置）需要被安全地管理。选择内存存储（简单）来保存状态。
-*   **并发控制**: 多个进程可能同时访问文件系统。需要为每个会话的关键操作（如写入 `prompt`）实现锁或队列机制，以防止竞争条件。
-*   **错误处理**: LLM API 调用失败、网络问题等都应被妥善处理，并向上层应用返回标准的文件系统错误码，例如 `EIO` (Input/output error)。
-*   **安全性**: API 密钥和其他敏感配置绝不能硬编码。应通过环境变量或安全的配置文件在文件系统挂载时提供。
-
-
-
+推荐使用的库：
+find_package
+- https://github.com/doctest/doctest
+- https://github.com/gabime/spdlog
+- https://github.com/nlohmann/json
+- https://github.com/marzer/tomlplusplus
+- https://github.com/jarro2783/cxxopts
+git submod + add_subdirectory
+- https://github.com/zeromq/cppzmq
+- https://github.com/sewenew/redis-plus-plus
+header only
+- https://github.com/jachappell/Fusepp
+- https://github.com/olrea/openai-cpp
 
 
 #### 目录结构
-
-```
-
-fusellm/
-├── Cargo.toml          # Project dependencies (fuser, async-std, async-openai, etc.) and metadata
-├── semantic_search_service/      # Python backend for semantic search
-│   ├── requirements.txt  # Python dependencies (llama-index, zeromq, etc.)
-│   └── service.py      # The ZMQ server implementing the search logic
-├── src/
-│   ├── main.rs         # Entry point: parses arguments, sets up logging, mounts the FS
-│   ├── lib.rs          # Main library module, exports the Filesystem struct
-│   ├── config.rs       # Defines structs for TOML configuration (using serde)
-│   ├── state.rs        # Core state management: structs for FilesystemState, Conversation, SearchIndex
-│   ├── llm_api.rs      # Abstraction for communicating with LLM APIs (e.g., OpenAI)
-│   │
-│   ├── semantic/       # Module for semantic search communication
-│   │   ├── mod.rs
-│   │   └── client.rs   # ZMQ client to talk to the semantic_search_service/service.py
-│   │
-│   └── fs/             # The main FUSE Filesystem implementation
-│       ├── mod.rs      # The main Filesystem struct and its `impl Filesystem for FuseLlm`
-│       ├── constants.rs  # Inode numbers, file names, etc.
-│       └── handlers/   # Each file/directory type gets its own handler module
-│           ├── mod.rs
-│           ├── root.rs         # Logic for the root directory (/)
-│           ├── models.rs       # Logic for /models and its children
-│           ├── conversations.rs  # Logic for /conversations and its children (prompt, history, etc.)
-│           ├── config.rs       # Logic for /config and its children
-│           └── semantic_search.rs # Logic for /semantic_search and its children
-│
-└── tests/
-    ├── integration_tests.rs # High-level tests that interact with a mock FS
-    └── unit_tests/
-        └── config_parsing.rs # Example unit test
-
-```
 
 
 
