@@ -47,7 +47,7 @@ bool ConfigManager::load_from_file(std::string_view path) {
         tbl = toml::parse_file(path);
     } catch (const toml::parse_error &err) {
         SPDLOG_ERROR("Failed to parse config file '{}':\n{}", path,
-                      err.description());
+                     err.description());
         return false;
     }
 
@@ -70,6 +70,11 @@ bool ConfigManager::load_from_file(std::string_view path) {
     if (auto *default_config_tbl = tbl["default_config"].as_table()) {
         if (ModelParameters::validate_model_params_table(*default_config_tbl)) {
             global_params_.merge(*default_config_tbl);
+            if (not global_params_.system_prompt.has_value()) {
+                global_params_.system_prompt =
+                    "FuseLLM\nMount your LLM.\nEverything is a file.Even the "
+                    "LLM.";
+            }
         } else {
             SPDLOG_WARN(
                 "Invalid values found in [default_config] section of '{}'.",
@@ -90,15 +95,14 @@ bool ModelParameters::validate_model_params_table(const toml::table &tbl) {
         auto temp = temp_node->value<double>();
         if (not temp.has_value() || temp < 0.0 || temp > 2.0) {
             SPDLOG_WARN("Validation failed: 'temperature' must be between 0.0 "
-                         "and 2.0.");
+                        "and 2.0.");
             return false;
         }
     }
 
     if (auto prompt_node = tbl.get("system_prompt")) {
         if (!prompt_node->is_string()) {
-            SPDLOG_WARN(
-                "Validation failed: 'system_prompt' must be a string.");
+            SPDLOG_WARN("Validation failed: 'system_prompt' must be a string.");
             return false;
         }
     }
@@ -115,7 +119,8 @@ bool ModelParameters::validate_model_params_table(const toml::table &tbl) {
     return true;
 }
 
-bool ConfigManager::update_model_params(std::string_view model_name, const toml::table& tbl) {
+bool ConfigManager::update_model_params(std::string_view model_name,
+                                        const toml::table &tbl) {
     if (!ModelParameters::validate_model_params_table(tbl)) {
         return false;
     }
@@ -128,7 +133,8 @@ bool ConfigManager::update_model_params(std::string_view model_name, const toml:
     return true;
 }
 
-ModelParameters ConfigManager::get_model_params(std::string_view model_name) const {
+ModelParameters
+ConfigManager::get_model_params(std::string_view model_name) const {
     // 从全局参数开始
     ModelParameters final_params = global_params_;
 

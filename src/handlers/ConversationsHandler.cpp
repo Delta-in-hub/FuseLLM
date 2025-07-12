@@ -18,7 +18,7 @@ enum class ConvPathType {
     Root,        // /conversations
     LatestDir,   // /conversations/latest (acts as a directory)
     SessionDir,  // /conversations/<session_id>
-    PromptFile,  // /conversations/<session_id>/prompt
+    LLMFile,     // /conversations/<session_id>/llm
     HistoryFile, // /conversations/<session_id>/history
     ContextFile, // /conversations/<session_id>/context
     ConfigDir,   // /conversations/<session_id>/config
@@ -32,7 +32,7 @@ struct ParsedConvPath {
     std::string session_id;
 };
 
-// Parses a path string (e.g., "/conversations/123/prompt") into a structured
+// Parses a path string (e.g., "/conversations/123/llm") into a structured
 // representation.
 ParsedConvPath parse_conv_path(std::string_view path) {
     ParsedConvPath p;
@@ -57,8 +57,8 @@ ParsedConvPath parse_conv_path(std::string_view path) {
     } else if (components.size() == 3) { // "/conversations/<id>/<file>"
         p.session_id = components[1];
         const auto &file = components[2];
-        if (file == "prompt")
-            p.type = ConvPathType::PromptFile;
+        if (file == "llm")
+            p.type = ConvPathType::LLMFile;
         else if (file == "history")
             p.type = ConvPathType::HistoryFile;
         else if (file == "context")
@@ -119,7 +119,7 @@ int ConversationsHandler::getattr(const char *path_str, struct stat *stbuf,
         stbuf->st_size = 4096; // Standard directory size
         return 0;
 
-    case ConvPathType::PromptFile:
+    case ConvPathType::LLMFile:
     case ConvPathType::HistoryFile:
     case ConvPathType::ContextFile:
     case ConvPathType::ModelFile:
@@ -162,7 +162,7 @@ int ConversationsHandler::readdir(const char *path, void *buf,
                p.type == ConvPathType::LatestDir) {
         if (!get_session(session_manager_, p.session_id))
             return -ENOENT;
-        filler(buf, "prompt", NULL, 0, (fuse_fill_dir_flags)0);
+        filler(buf, "llm", NULL, 0, (fuse_fill_dir_flags)0);
         filler(buf, "history", NULL, 0, (fuse_fill_dir_flags)0);
         filler(buf, "context", NULL, 0, (fuse_fill_dir_flags)0);
         filler(buf, "config", NULL, 0, (fuse_fill_dir_flags)0);
@@ -212,7 +212,7 @@ int ConversationsHandler::open(const char *path, struct fuse_file_info *fi) {
     }
 
     // Check if underlying session exists for file operations
-    if (p.type >= ConvPathType::PromptFile &&
+    if (p.type >= ConvPathType::LLMFile &&
         !get_session(session_manager_, p.session_id)) {
         return -ENOENT;
     }
@@ -235,7 +235,7 @@ int ConversationsHandler::read(const char *path, char *buf, size_t size,
 
     std::string content;
     switch (p.type) {
-    case ConvPathType::PromptFile:
+    case ConvPathType::LLMFile:
         content = session->get_latest_response();
         break;
     case ConvPathType::HistoryFile:
@@ -297,7 +297,7 @@ int ConversationsHandler::write(const char *path, const char *buf, size_t size,
     std::string data(buf, size);
 
     switch (p.type) {
-    case ConvPathType::PromptFile: {
+    case ConvPathType::LLMFile: {
         SPDLOG_INFO("Session '{}' received prompt.", session->get_id());
         std::string response = session->add_prompt(data, llm_client_);
         if (response.empty()) {
