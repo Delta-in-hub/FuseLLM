@@ -1,11 +1,22 @@
-// src/handlers/RootHandler.h
 #pragma once
 #include "BaseHandler.h"
 
 namespace fusellm {
-// 处理根目录 (/) 的 ls 操作
+
+/**
+ * @class RootHandler
+ * @brief Handles operations for the root ("/") directory.
+ *
+ * Its primary responsibility is to list the top-level directories:
+ * 'models', 'config', 'conversations', and 'semantic_search'.
+ */
 class RootHandler : public BaseHandler {
-    // 实现 readdir 来列出 models, config, conversations, semantic_search
-    // 其他操作返回错误
+  public:
+    int getattr(const char *path, struct stat *stbuf,
+                struct fuse_file_info *fi) override;
+
+    int readdir(const char *path, void *buf, fuse_fill_dir_t filler,
+                off_t offset, struct fuse_file_info *fi,
+                enum fuse_readdir_flags flags) override;
 };
-} 
+} // namespace fusellm

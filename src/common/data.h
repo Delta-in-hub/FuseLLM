@@ -22,7 +22,7 @@ struct Message {
 
 // 代表一次完整的会话
 struct Conversation {
-    std::string id;
+    // std::string id;
     std::vector<Message> history; // 问答历史
     std::string context;          // 临时上下文
     // 会话特定的配置将通过 ConfigManager 获取

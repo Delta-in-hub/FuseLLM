@@ -38,8 +38,3 @@ temperature = 0.9
 # 可以是 IPC (Inter-Process Communication) 或 HTTP URL。
 # 如果不设置，将使用代码中的默认值 "ipc:///tmp/fusellm-semantic.ipc"。
 # service_url = "http://127.0.0.1:8001"
-
-# (可选) 用于生成文本嵌入的模型的名称。
-# 这取决于语义搜索服务支持哪些模型。
-# 如果不设置，将使用代码中的默认值 None。
-# embedding_model = "bge-large-en-v1.5"

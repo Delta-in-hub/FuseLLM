@@ -1,50 +1,64 @@
-// src/config/ConfigManager.h
 #pragma once
 
-#include <string>
-#include <memory>
-#include <unordered_map>
 #include <mutex>
+#include <optional>
+#include <string>
+#include <string_view>
 #include <toml++/toml.hpp>
+#include <unordered_map>
 
 namespace fusellm {
 
-// 简化配置访问的结构体
-struct Config {
-    // 从TOML表中加载或合并配置
-    void load(const toml::table& tbl);
+/**
+ * @struct ModelParameters
+ * @brief Represents a set of configurable parameters for an LLM.
+ * This structure can be layered (global, model-specific, session-specific).
+ */
+struct ModelParameters {
+    /**
+     * @brief Merges parameters from a TOML table into this object.
+     * @param tbl The TOML table to load settings from.
+     */
+    void merge(const toml::table &tbl);
 
-    std::string model = "default";
-    double temperature = 0.7;
-    std::string system_prompt = "You are a helpful assistant.";
-    // ... 其他可配置项
+    /**
+     * @brief Validates the structure and values of a TOML table containing
+     * model parameters.
+     * @param tbl The TOML table to validate.
+     * @return True if the table is valid, false otherwise.
+     */
+    static bool validate_model_params_table(const toml::table &tbl);
+
+    std::optional<double> temperature;
+    std::optional<std::string> system_prompt;
+    // Other potential LLM parameters like top_p, max_tokens can be added here.
 };
 
-// 负责加载、验证和提供对所有配置层级的访问
+/**
+ * @class ConfigManager
+ * @brief Manages the overall application and model configurations.
+ * This class is thread-safe.
+ */
 class ConfigManager {
-public:
+  public:
     ConfigManager();
 
-    // 从文件加载全局配置
-    bool load_global_config(const std::string& path);
+    /**
+     * @brief Loads the global configuration from a TOML file.
+     * @param path The path to the configuration file.
+     * @return True on success, false on failure (e.g., file not found, parse
+     * error).
+     */
+    bool load_from_file(std::string_view path);
 
-    // 获取合并后的最终配置，考虑所有层级
-    // (会话 > 模型 > 全局)
-    Config get_effective_config(const std::string& session_id, const std::string& model_name);
+    // Top-level settings from the global config file.
+    std::string default_model_;
+    std::string api_key_;
+    std::string base_url_;
+    std::string semantic_search_service_url_;
 
-    // 读写全局/模型配置文件内容
-    std::string read_config_file(const std::string& path);
-    bool write_config_file(const std::string& path, const std::string& content);
-
-private:
-    // 验证TOML内容的合法性
-    bool validate_config(const toml::table& tbl);
-
-    Config global_config_;
-    std::unordered_map<std::string, Config> model_configs_;
-    // 会话配置由 Session 对象自己管理
-
-    std::mutex mtx_; // 保护配置的读写
+    // Parsed configuration objects.
+    ModelParameters global_params_;
 };
 
 } // namespace fusellm

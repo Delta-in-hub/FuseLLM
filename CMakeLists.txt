@@ -43,6 +43,11 @@ add_executable(fusellm
     src/services/ZmqClient.cpp
     src/state/Session.cpp
     src/state/SessionManager.cpp
+    src/handlers/ConfigHandler.cpp
+    src/handlers/ConversationsHandler.cpp
+    src/handlers/ModelsHandler.cpp
+    src/handlers/RootHandler.cpp
+    src/handlers/SemanticSearchHandler.cpp
 )
 
 # 为支持大文件（超过 2GB），添加此编译定义

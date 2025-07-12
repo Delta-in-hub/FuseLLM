@@ -1,41 +1,82 @@
-// src/state/SessionManager.h
 #pragma once
 
 #include "Session.h"
 #include <memory>
+#include <mutex>
 #include <string>
 #include <unordered_map>
-#include <mutex>
 #include <vector>
 
 namespace fusellm {
 
-// 管理所有活动会话的生命周期
+/**
+ * @class SessionManager
+ * @brief A thread-safe manager for the lifecycle of all chat sessions.
+ *
+ * This class creates, finds, deletes, and lists all active Session objects.
+ * It also tracks the most recently used session to support the 'latest'
+ * symlink.
+ */
 class SessionManager {
-public:
-    // 创建一个新会话，如果id已存在则失败
-    // 返回指向新会a话的共享指针，若失败则返回nullptr
-    std::shared_ptr<Session> create_session(const std::string& id);
+  public:
+    /**
+     * @brief Constructs the SessionManager.
+     * @param config A reference to the global ConfigManager, needed to
+     * initialize new sessions with default settings.
+     */
+    explicit SessionManager(const ConfigManager &config);
 
-    // 删除一个会话
-    // 返回 true 如果成功删除
-    bool remove_session(const std::string& id);
+    /**
+     * @brief Creates a new session with the given ID.
+     * @param id The unique identifier for the new session.
+     * @return A shared pointer to the new Session, or nullptr if a session
+     * with that ID already exists.
+     */
+    std::shared_ptr<Session> create_session(std::string_view id);
 
-    // 查找一个会话
-    // 返回指向会话的共享指针，若未找到则返回nullptr
-    std::shared_ptr<Session> find_session(const std::string& id);
+    /**
+     * @brief Removes a session by its ID.
+     * @param id The ID of the session to remove.
+     * @return True if the session was found and removed, false otherwise.
+     */
+    bool remove_session(std::string_view id);
 
-    // 列出所有会话的ID
+    /**
+     * @brief Finds a session by its ID.
+     * @param id The ID of the session to find.
+     * @return A shared pointer to the Session, or nullptr if not found.
+     */
+    std::shared_ptr<Session> find_session(std::string_view id);
+
+    /**
+     * @brief Lists the IDs of all currently active sessions.
+     * @return A vector of strings containing the session IDs.
+     */
     std::vector<std::string> list_sessions();
 
-    // 更新并获取最新的会话ID
-    void set_latest_session_id(const std::string& id);
+    /**
+     * @brief Updates the ID of the most recently interacted-with session.
+     * @param id The ID of the latest session.
+     */
+    void set_latest_session_id(std::string_view id);
+
+    /**
+     * @brief Retrieves the ID of the most recently interacted-with session.
+     * @return The string ID of the latest session.
+     */
     std::string get_latest_session_id();
 
-private:
+  private:
+    // A reference to the global config manager to pass to new sessions
+    const ConfigManager &config_manager_;
+
+    // The primary storage for sessions, mapping ID to a session object
     std::unordered_map<std::string, std::shared_ptr<Session>> sessions_;
     std::string latest_session_id_;
-    std::mutex mtx_; // 保护 sessions_ 映射和 latest_session_id_
+
+    // A single mutex to protect both the map and the 'latest_session_id_'
+    // string from concurrent access.
+    std::mutex mtx_;
 };
 
 } // namespace fusellm
