@@ -16,8 +16,14 @@ namespace fusellm {
 // FUSE 文件系统的核心实现，继承自 fusepp
 class FuseLLM : public Fusepp::Fuse<FuseLLM> {
   public:
+    // 获取单例的静态方法
+    static FuseLLM &getInstance(const ConfigManager &config);
+
     FuseLLM() = delete;
-    FuseLLM(const ConfigManager &config);
+    FuseLLM(const FuseLLM &) = delete;
+    FuseLLM(FuseLLM &&) = delete;
+    FuseLLM &operator=(const FuseLLM &) = delete;
+    FuseLLM &operator=(FuseLLM &&) = delete;
 
     // FUSE 回调函数，将作为 FUSE 操作的入口点
     // fusepp 通过 CRTP (Curiously Recurring Template Pattern) 调用这些静态方法
@@ -36,6 +42,7 @@ class FuseLLM : public Fusepp::Fuse<FuseLLM> {
     // ... 其他 FUSE 操作
 
   private:
+    explicit FuseLLM(const ConfigManager &config);
     ConfigManager global_config;
     // 根据路径将请求分派给正确的 Handler
     static BaseHandler *get_handler(std::string_view path);

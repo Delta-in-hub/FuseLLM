@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Session.h"
+#include <atomic>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -66,6 +67,17 @@ class SessionManager {
      */
     std::string get_latest_session_id();
 
+    /**
+     * @brief Creates a session with an automatically generated, PID-like ID.
+     *
+     * This method guarantees the creation of a session by using an auto-
+     * incrementing ID and retrying if a collision occurs (e.g., if a user
+     * manually created a session with a conflicting numeric ID).
+     *
+     * @return A shared pointer to the newly created Session.
+     */
+    std::shared_ptr<Session> create_session_with_auto_id();
+
   private:
     // A reference to the global config manager to pass to new sessions
     const ConfigManager &config_manager_;
@@ -77,6 +89,10 @@ class SessionManager {
     // A single mutex to protect both the map and the 'latest_session_id_'
     // string from concurrent access.
     std::mutex mtx_;
+
+    // A thread-safe, PID-like counter for generating unique session IDs.
+    // Initialized to a common starting PID number for user processes.
+    std::atomic<long> next_session_pid_{1000};
 };
 
 } // namespace fusellm

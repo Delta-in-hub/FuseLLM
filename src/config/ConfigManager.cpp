@@ -18,6 +18,17 @@ void ModelParameters::merge(const toml::table &tbl) {
     // Add merging for other parameters here.
 }
 
+void ModelParameters::merge(const ModelParameters &other) {
+    // Only override if the other parameter has a value
+    if (other.temperature) {
+        temperature = other.temperature;
+    }
+    if (other.system_prompt) {
+        system_prompt = other.system_prompt;
+    }
+    // Add merging for other parameters here as they are added
+}
+
 // --- ConfigManager Implementation ---
 
 ConfigManager::ConfigManager()
@@ -102,6 +113,32 @@ bool ModelParameters::validate_model_params_table(const toml::table &tbl) {
     }
 
     return true;
+}
+
+bool ConfigManager::update_model_params(std::string_view model_name, const toml::table& tbl) {
+    if (!ModelParameters::validate_model_params_table(tbl)) {
+        return false;
+    }
+
+    std::lock_guard<std::mutex> lock(mtx_);
+    // 获取或创建该模型的参数对象，然后合并新设置
+    model_specific_params_[std::string(model_name)].merge(tbl);
+
+    SPDLOG_INFO("Updated configuration for model '{}'.", model_name);
+    return true;
+}
+
+ModelParameters ConfigManager::get_model_params(std::string_view model_name) const {
+    // 从全局参数开始
+    ModelParameters final_params = global_params_;
+
+    std::lock_guard<std::mutex> lock(mtx_);
+    auto it = model_specific_params_.find(std::string(model_name));
+    if (it != model_specific_params_.end()) {
+        // 如果有模型专属配置，合并它们（专属配置覆盖全局配置）
+        final_params.merge(it->second);
+    }
+    return final_params;
 }
 
 } // namespace fusellm

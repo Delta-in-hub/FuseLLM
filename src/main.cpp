@@ -54,7 +54,7 @@ int main(int argc, char *argv[]) {
     }
 
     // 3. 初始化 FuseLLM 实例
-    fusellm::FuseLLM fs(global_config);
+    auto &fs = fusellm::FuseLLM::getInstance(global_config);
 
     // 4. 准备 FUSE 参数
     // fusepp 会处理大部分参数，但我们需要把我们的 mountpoint 加进去

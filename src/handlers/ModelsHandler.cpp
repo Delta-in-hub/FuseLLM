@@ -1,18 +1,20 @@
 #include "ModelsHandler.h"
 #include "../common/utils.hpp"
+#include "../state/SessionManager.h"
 #include <spdlog/spdlog.h>
 #include <string.h>
 #include <string_view>
 
 namespace fusellm {
 
-ModelsHandler::ModelsHandler(LLMClient &client, ConfigManager &config)
-    : llm_client_(client), config_manager_(config) {
+ModelsHandler::ModelsHandler(LLMClient &client, ConfigManager &config,
+                             SessionManager &sessions)
+    : llm_client_(client), config_manager_(config), session_manager_(sessions) {
     auto &default_model = config_manager_.default_model_;
     if (std::find(llm_client_.model_list.begin(), llm_client_.model_list.end(),
                   default_model) == llm_client_.model_list.end()) {
         SPDLOG_WARN("Default model '{}' not found in the model list.",
-                     default_model);
+                    default_model);
         default_model = llm_client_.model_list.front();
         SPDLOG_WARN("Using default model '{}'.", default_model);
     }
@@ -190,8 +192,8 @@ int ModelsHandler::write(const char *path, const char *buf, size_t size,
         model_name = config_manager_.default_model_;
     }
 
-    ModelParameters params = config_manager_.global_params_;
-    std::string response = llm_client_.simple_query(model_name, prompt, params);
+    // 使用 ConfigManager 获取合并后的模型参数
+    std::string response = llm_client_.simple_query(model_name, prompt, config_manager_);
 
     SPDLOG_DEBUG("Response from model '{}': {}", model_name, response);
 
@@ -200,7 +202,33 @@ int ModelsHandler::write(const char *path, const char *buf, size_t size,
         return -EIO; // Input/output error
     }
 
-    //  TODO : Create a new Conversation and save the response
+    // Create a new conversation to archive this stateless interaction.
+    try {
+        // Create a new session with an auto-generated, PID-like ID.
+        // The creation logic, including retries, is now encapsulated in the
+        // SessionManager.
+        auto session = session_manager_.create_session_with_auto_id();
+
+        if (session) {
+            // Manually populate the new session with the prompt and response.
+            session->populate(prompt, response);
+            // This interaction also makes it the 'latest' session.
+            session_manager_.set_latest_session_id(session->get_id());
+            SPDLOG_INFO(
+                "Archived stateless query as new conversation with ID: {}",
+                session->get_id());
+        } else {
+            // This block should theoretically be unreachable now, but is kept
+            // for robustness.
+            SPDLOG_ERROR(
+                "Failed to create a new session to archive the query.");
+        }
+    } catch (const std::exception &e) {
+        SPDLOG_ERROR("An exception occurred while creating archive session: {}",
+                     e.what());
+        // We don't return an error here, as the primary goal (getting a
+        // response) succeeded. Archiving is a secondary concern.
+    }
 
     {
         std::lock_guard<std::mutex> lock(mtx_);

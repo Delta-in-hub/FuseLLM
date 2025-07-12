@@ -13,6 +13,11 @@ namespace fusellm {
 
 std::unordered_map<PathType, std::unique_ptr<BaseHandler>> FuseLLM::handlers;
 
+FuseLLM &FuseLLM::getInstance(const ConfigManager &config) {
+    static FuseLLM instance(config);
+    return instance;
+}
+
 FuseLLM::FuseLLM(const ConfigManager &config)
     : global_config(config), session_manager(config), llm_client(config),
       zmq_client() {
@@ -23,8 +28,9 @@ FuseLLM::FuseLLM(const ConfigManager &config)
 
     // Map path types to their corresponding handlers.
     handlers[PathType::Root] = std::make_unique<RootHandler>();
-    handlers[PathType::Models] =
-        std::make_unique<ModelsHandler>(llm_client, global_config);
+    handlers[PathType::Models] = std::make_unique<ModelsHandler>(
+        llm_client, const_cast<ConfigManager &>(global_config),
+        session_manager);
 
     handlers[PathType::Config] =
         std::make_unique<ConfigHandler>(global_config, llm_client);
@@ -45,7 +51,7 @@ BaseHandler *FuseLLM::get_handler(std::string_view path) {
         return it->second.get();
     }
     SPDLOG_WARN("No handler found for path '{}' (type: {})", path,
-                 static_cast<int>(parsed_path));
+                static_cast<int>(parsed_path));
     return nullptr;
 }
 

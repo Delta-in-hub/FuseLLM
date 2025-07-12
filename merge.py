@@ -4,7 +4,7 @@ def main():
     # 配置参数
     start_dir = '.'  # 起始目录（当前目录）
     output_file = 'all_files_output.txt'  # 输出文件名
-    exclude_dirs = ['.git','build','.github','.cache','assets','semantic_search_service','external']  # 要排除的目录列表
+    exclude_dirs = ['.git','build','.github','.cache','assets','external']  # 要排除的目录列表
     include_suffixes = {
         '.py', '.cpp', '.c', '.h', '.hpp', '.txt', '.md', '.sh',
         '.cmake', '.json', '.xml', '.yml', '.yaml', '.ini', '.log',

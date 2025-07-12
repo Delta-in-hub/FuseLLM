@@ -16,6 +16,7 @@ int RootHandler::getattr(const char *path, struct stat *stbuf,
         // 为了简单起见，可以先写死，或者动态计算
         stbuf->st_nlink = 2 + 4; // ., ..(虽然根目录的..是它自己), models,
                                  // config, conversations, semantic_search
+        stbuf->st_size = 4096;   // Standard directory size
         return 0;
     }
 
@@ -27,6 +28,7 @@ int RootHandler::getattr(const char *path, struct stat *stbuf,
         stbuf->st_mode = S_IFDIR | 0755;
         // 这些是空目录，链接数为 2 (一个来自父目录'/', 一个来自它们自身的'.')
         stbuf->st_nlink = 2;
+        stbuf->st_size = 4096;   // Standard directory size
         return 0;
     }
 

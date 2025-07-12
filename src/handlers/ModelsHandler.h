@@ -1,6 +1,7 @@
 #pragma once
 #include "../config/ConfigManager.h"
 #include "../services/LLMClient.h"
+#include "../state/SessionManager.h"
 #include "BaseHandler.h"
 #include <mutex>
 #include <unordered_map>
@@ -16,7 +17,7 @@ namespace fusellm {
  */
 class ModelsHandler : public BaseHandler {
   public:
-    explicit ModelsHandler(LLMClient &client, ConfigManager &config);
+    explicit ModelsHandler(LLMClient &client, ConfigManager &config, SessionManager &sessions);
 
     int getattr(const char *path, struct stat *stbuf,
                 struct fuse_file_info *fi) override;
@@ -36,6 +37,7 @@ class ModelsHandler : public BaseHandler {
   private:
     LLMClient &llm_client_;
     ConfigManager &config_manager_;
+    SessionManager &session_manager_;
 
     // Thread-safe cache for the last response of each model
     std::unordered_map<std::string, std::string> last_responses_;

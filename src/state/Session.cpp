@@ -111,4 +111,28 @@ std::string Session::add_prompt(std::string_view prompt,
     return response;
 }
 
+void Session::populate(std::string_view user_prompt,
+                       std::string_view ai_response) {
+    std::lock_guard<std::mutex> lock(mtx_);
+
+    // This method is for new sessions, but clearing is safe just in case.
+    conversation_.history.clear();
+
+    // 1. Add user message
+    conversation_.history.push_back(
+        Message{Message::Role::User, std::string(user_prompt),
+                std::chrono::system_clock::now()});
+
+    // 2. Add AI response
+    conversation_.history.push_back(
+        Message{Message::Role::AI, std::string(ai_response),
+                std::chrono::system_clock::now()});
+
+    // 3. Set the latest response for this session
+    latest_response_ = ai_response;
+
+    SPDLOG_INFO(
+        "Session '{}' populated with a stateless user/AI interaction.", id_);
+}
+
 } // namespace fusellm

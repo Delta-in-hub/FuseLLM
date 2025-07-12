@@ -52,6 +52,18 @@ class Session {
      */
     std::string add_prompt(std::string_view prompt, LLMClient &llm_client);
 
+    /**
+     * @brief Manually populates the session with a user prompt and an AI response.
+     *
+     * This is used for creating a session record from a stateless interaction,
+     * such as one initiated from the /models directory, without triggering a
+     * new LLM call.
+     *
+     * @param user_prompt The initial user message.
+     * @param ai_response The corresponding AI response.
+     */
+    void populate(std::string_view user_prompt, std::string_view ai_response);
+
   private:
     std::string id_;
     Conversation conversation_;

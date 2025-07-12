@@ -116,6 +116,7 @@ int ConversationsHandler::getattr(const char *path_str, struct stat *stbuf,
         }
         stbuf->st_mode = S_IFDIR | 0755;
         stbuf->st_nlink = 2;
+        stbuf->st_size = 4096; // Standard directory size
         return 0;
 
     case ConvPathType::PromptFile:
@@ -150,7 +151,10 @@ int ConversationsHandler::readdir(const char *path, void *buf,
     ParsedConvPath p = parse_conv_path(path);
 
     if (p.type == ConvPathType::Root) {
-        filler(buf, "latest", NULL, 0, (fuse_fill_dir_flags)0);
+        // Only list 'latest' if a latest session ID actually exists
+        if (!session_manager_.get_latest_session_id().empty()) {
+            filler(buf, "latest", NULL, 0, (fuse_fill_dir_flags)0);
+        }
         for (const auto &id : session_manager_.list_sessions()) {
             filler(buf, id.c_str(), NULL, 0, (fuse_fill_dir_flags)0);
         }

@@ -28,6 +28,7 @@ int ConfigHandler::getattr(const char *path, struct stat *stbuf,
     if (components.size() == 1 && components[0] == config_dir) {
         stbuf->st_mode = S_IFDIR | 0755;
         stbuf->st_nlink = 2;
+        stbuf->st_size = 4096; // Standard directory size
         return 0;
     }
 
@@ -41,6 +42,7 @@ int ConfigHandler::getattr(const char *path, struct stat *stbuf,
         if (is_valid_model) {
             stbuf->st_mode = S_IFDIR | 0755;
             stbuf->st_nlink = 2;
+            stbuf->st_size = 4096; // Standard directory size
             return 0;
         }
     }
@@ -56,6 +58,10 @@ int ConfigHandler::getattr(const char *path, struct stat *stbuf,
         if (is_valid_model && file_name == "settings.toml") {
             stbuf->st_mode = S_IFREG | 0666;
             stbuf->st_nlink = 1;
+            // For regular files, set a reasonable default size that can be
+            // changed later This helps tools like 'ls -l' and 'cat' work
+            // properly
+            stbuf->st_size = 1024; // Default size for settings.toml
             return 0;
         }
     }
@@ -179,14 +185,23 @@ int ConfigHandler::read(const char *path, char *buf, size_t size, off_t offset,
             if (model_name == default_model) {
                 model_name = default_config.default_model_;
             }
-            std::string content;
-            {
-                std::lock_guard<std::mutex> lock(mtx_);
-                auto it = models_config.find(model_name.data());
-                if (it != models_config.end()) {
-                    content = it->second;
-                }
+
+            // 1. Get the actual model parameters from ConfigManager
+            ModelParameters params =
+                default_config.get_model_params(model_name);
+
+            // 2. Serialize the parameters to TOML format
+            std::stringstream ss;
+            if (params.temperature) {
+                ss << "temperature = " << *params.temperature << "\n";
             }
+            if (params.system_prompt) {
+                // Escape special characters in the string for TOML
+                ss << "system_prompt = " << toml::value(*params.system_prompt)
+                   << "\n";
+            }
+
+            std::string content = ss.str();
 
             if (offset >= content.length()) {
                 return 0;
@@ -235,37 +250,32 @@ int ConfigHandler::write(const char *path, const char *buf, size_t size,
             if (model_name == default_model) {
                 model_name = default_config.default_model_;
             }
-            std::string content;
-            {
-                std::lock_guard<std::mutex> lock(mtx_);
-                auto it = models_config.find(model_name.data());
-                if (it != models_config.end()) {
-                    content = it->second;
-                }
-            }
-            // offset
-            if (offset + size >= content.length()) {
-                content.resize(offset + size);
-            }
-            content.replace(offset, size, buf);
 
-            // validate toml
-            bool valid = false;
+            // 不支持部分写入或追加，必须一次性写入整个文件
+            if (offset != 0) {
+                return -EPERM;
+            }
+
+            std::string content(buf, size);
+
             try {
-                valid = ModelParameters::validate_model_params_table(
-                    toml::parse(content));
+                // 解析并验证 TOML 内容
+                toml::table tbl = toml::parse(content);
+
+                // 调用 ConfigManager 的更新方法
+                if (!default_config.update_model_params(model_name, tbl)) {
+                    SPDLOG_WARN(
+                        "Validation failed for TOML content on model '{}'",
+                        model_name);
+                    return -EINVAL;
+                }
+
+                return size;
             } catch (const std::exception &e) {
-                SPDLOG_WARN("Validation failed: {} : {}", e.what(), content);
+                SPDLOG_WARN("Failed to parse TOML content for model '{}': {}",
+                            model_name, e.what());
                 return -EINVAL;
             }
-            if (!valid) {
-                return -EINVAL;
-            }
-            {
-                std::lock_guard<std::mutex> lock(mtx_);
-                models_config[model_name.data()] = content;
-            }
-            return size;
         }
     }
     return -ENOENT;

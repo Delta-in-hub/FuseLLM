@@ -20,6 +20,13 @@ struct ModelParameters {
      * @param tbl The TOML table to load settings from.
      */
     void merge(const toml::table &tbl);
+    
+    /**
+     * @brief Merges parameters from another ModelParameters object into this one.
+     * Only non-nullopt values from 'other' will override current values.
+     * @param other The other ModelParameters to merge from.
+     */
+    void merge(const ModelParameters &other);
 
     /**
      * @brief Validates the structure and values of a TOML table containing
@@ -59,6 +66,26 @@ class ConfigManager {
 
     // Parsed configuration objects.
     ModelParameters global_params_;
+
+    /**
+     * @brief 更新特定模型的配置参数。
+     * @param model_name 要更新配置的模型名称。
+     * @param tbl 从文件写入中解析出的 TOML 表。
+     * @return 如果更新成功（且验证通过），则返回 true。
+     */
+    bool update_model_params(std::string_view model_name, const toml::table& tbl);
+
+    /**
+     * @brief 获取指定模型最终生效的参数。
+     * 该方法会合并全局参数和模型专属参数。
+     * @param model_name 模型名称。
+     * @return 合并后的 ModelParameters 对象。
+     */
+    ModelParameters get_model_params(std::string_view model_name) const;
+
+  private:
+    std::unordered_map<std::string, ModelParameters> model_specific_params_;
+    mutable std::mutex mtx_; // 用于保护 model_specific_params_
 };
 
 } // namespace fusellm

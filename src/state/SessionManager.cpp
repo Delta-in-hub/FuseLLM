@@ -16,6 +16,26 @@ std::shared_ptr<Session> SessionManager::create_session(std::string_view id) {
     return session;
 }
 
+std::shared_ptr<Session> SessionManager::create_session_with_auto_id() {
+    // This loop ensures we find a unique ID, even if a user manually creates
+    // a session with a conflicting numeric name.
+    while (true) {
+        // Atomically fetch the current value and then increment it.
+        long pid = next_session_pid_++;
+        std::string id = std::to_string(pid);
+
+        // Attempt to create the session using the existing thread-safe method.
+        auto session = create_session(id);
+
+        if (session) {
+            // If create_session returns a valid pointer, we succeeded.
+            return session;
+        }
+        // If it returns nullptr, the ID was taken. The loop will continue
+        // and try the next PID.
+    }
+}
+
 bool SessionManager::remove_session(std::string_view id) {
     std::lock_guard<std::mutex> lock(mtx_);
     if (latest_session_id_ == id) {

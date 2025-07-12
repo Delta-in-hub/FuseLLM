@@ -35,13 +35,12 @@ class LLMClient {
      * @brief Sends a simple, stateless query to the LLM.
      * @param model_name The name of the model to use (e.g., "gpt-4").
      * @param prompt The user's question or prompt.
-     * @param params The model parameters (e.g., temperature) to use for this
-     * query.
+     * @param config_manager Reference to the ConfigManager to get model parameters.
      * @return The LLM's response as a string, or an empty string on failure.
      */
     std::string simple_query(std::string_view model_name,
                              std::string_view prompt,
-                             const ModelParameters &ms);
+                             const ConfigManager &config_manager);
 
     /**
      * @brief Sends a request based on a full conversation history.
@@ -54,7 +53,7 @@ class LLMClient {
      * @return The LLM's response as a string, or an empty string on failure.
      */
     std::string conversation_query(std::string_view model_name,
-                                   const ModelParameters &ms,
+                                   const ConfigManager &config_manager,
                                    const Conversation &conversation);
 
   private:

@@ -51,7 +51,8 @@ LLMClient::LLMClient(const ConfigManager &config_manager) {
 
 std::string LLMClient::simple_query(std::string_view model_name,
                                     std::string_view prompt,
-                                    const ModelParameters &ms) {
+                                    const ConfigManager &config_manager) {
+    const auto ms = config_manager.get_model_params(std::string(model_name));
     // Construct a minimal message list for a simple, one-shot query.
     json messages;
     if (ms.system_prompt and not ms.system_prompt.value().empty()) {
@@ -71,14 +72,15 @@ std::string LLMClient::simple_query(std::string_view model_name,
         return extract_content_from_response(response);
     } catch (const std::exception &e) {
         SPDLOG_ERROR("LLM simple query failed for model '{}': {}", model_name,
-                      e.what());
+                     e.what());
         return ""; // Return empty string on error to indicate failure.
     }
 }
 
 std::string LLMClient::conversation_query(std::string_view model_name,
-                                          const ModelParameters &ms,
+                                          const ConfigManager &config_manager,
                                           const Conversation &conversation) {
+    const auto ms = config_manager.get_model_params(std::string(model_name));
     json messages = json::array();
 
     // 1. Add system prompt and context.
@@ -115,7 +117,7 @@ std::string LLMClient::conversation_query(std::string_view model_name,
         return extract_content_from_response(response);
     } catch (const std::exception &e) {
         SPDLOG_ERROR("LLM conversation query failed for model '{}': {}",
-                      model_name, e.what());
+                     model_name, e.what());
         return "";
     }
 }
@@ -172,7 +174,7 @@ LLMClient::extract_content_from_response(const json &response_json) {
     // If we reach here, content was not found. Log the reason if possible.
     if (response_json.contains("error")) {
         SPDLOG_ERROR("LLM API returned an error: {}",
-                      response_json["error"].dump());
+                     response_json["error"].dump());
     } else {
         SPDLOG_WARN(
             "Could not extract message content from LLM response. The "

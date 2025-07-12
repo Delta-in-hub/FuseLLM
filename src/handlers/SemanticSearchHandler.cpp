@@ -71,19 +71,18 @@ ParsedSearchPath parse_search_path(std::string_view path) {
 // Helper to check if a ZMQ response indicates success.
 bool is_response_ok(std::string_view response_str, std::string_view op_name) {
     if (response_str.empty()) {
-        SPDLOG_ERROR("Received empty ZMQ response for operation '{}'",
-                      op_name);
+        SPDLOG_ERROR("Received empty ZMQ response for operation '{}'", op_name);
         return false;
     }
     json response = json::parse(response_str, nullptr, false);
     if (response.is_discarded()) {
         SPDLOG_ERROR("Failed to parse ZMQ JSON response for '{}': {}", op_name,
-                      response_str);
+                     response_str);
         return false;
     }
     if (response.contains("error")) {
         SPDLOG_ERROR("ZMQ operation '{}' failed with error: {}", op_name,
-                      response["error"].dump());
+                     response["error"].dump());
         return false;
     }
     return response.value("status", "") == "ok";
@@ -101,7 +100,7 @@ std::vector<std::string> SemanticSearchHandler::list_indexes() {
     json response = json::parse(response_str, nullptr, false);
     if (response.is_discarded() || !response.is_array()) {
         SPDLOG_WARN("Could not list search indexes from backend. Response: {}",
-                     response_str);
+                    response_str);
         return {};
     }
     return response.get<std::vector<std::string>>();
@@ -117,6 +116,7 @@ int SemanticSearchHandler::getattr(const char *path, struct stat *stbuf,
     case SearchPathType::CorpusDir:
         stbuf->st_mode = S_IFDIR | 0755; // rwxr-xr-x
         stbuf->st_nlink = 2;
+        stbuf->st_size = 4096; // Standard directory size
         return 0;
 
     case SearchPathType::IndexDir: {
@@ -128,6 +128,7 @@ int SemanticSearchHandler::getattr(const char *path, struct stat *stbuf,
         }
         stbuf->st_mode = S_IFDIR | 0755; // rwxr-xr-x
         stbuf->st_nlink = 2;
+        stbuf->st_size = 4096; // Standard directory size
         return 0;
     }
 
@@ -142,7 +143,7 @@ int SemanticSearchHandler::getattr(const char *path, struct stat *stbuf,
         stbuf->st_mode = S_IFREG | 0644; // rw-r--r--
         stbuf->st_nlink = 1;
         // Corpus files are write-only in this model. Size is not tracked.
-        stbuf->st_size = 4096;
+        stbuf->st_size = 0; // Return 0 size for write-only files
         return 0;
 
     default:
@@ -188,7 +189,7 @@ int SemanticSearchHandler::mkdir(const char *path, mode_t mode) {
     ParsedSearchPath p = parse_search_path(path);
     if (p.type != SearchPathType::IndexDir) {
         SPDLOG_WARN("mkdir is only permitted for creating new indexes like "
-                     "/semantic_search/<index_name>");
+                    "/semantic_search/<index_name>");
         return -EPERM; // Operation not permitted
     }
 
@@ -198,7 +199,7 @@ int SemanticSearchHandler::mkdir(const char *path, mode_t mode) {
 
     if (!is_response_ok(response_str, "create_index")) {
         SPDLOG_ERROR("Failed to create search index '{}' via backend.",
-                      p.index_name);
+                     p.index_name);
         return -EIO; // Input/output error
     }
 
@@ -218,7 +219,7 @@ int SemanticSearchHandler::rmdir(const char *path) {
 
     if (!is_response_ok(response_str, "delete_index")) {
         SPDLOG_ERROR("Failed to delete search index '{}' via backend.",
-                      p.index_name);
+                     p.index_name);
         return -EIO;
     }
 
@@ -244,14 +245,14 @@ int SemanticSearchHandler::unlink(const char *path) {
     }
 
     SPDLOG_INFO("Removing document '{}' from index '{}'", p.file_name,
-                 p.index_name);
+                p.index_name);
     json payload = {{"index_name", p.index_name}, {"document_id", p.file_name}};
     std::string response_str =
         zmq_client_.send_request("remove_document", payload.dump());
 
     if (!is_response_ok(response_str, "remove_document")) {
         SPDLOG_ERROR("Failed to remove document '{}' from index '{}'",
-                      p.file_name, p.index_name);
+                     p.file_name, p.index_name);
         return -EIO;
     }
 
@@ -310,7 +311,7 @@ int SemanticSearchHandler::write(const char *path, const char *buf, size_t size,
         strutil::trim(
             query_text); // Remove trailing newline often added by `echo`
         SPDLOG_INFO("Executing query on index '{}': {}", p.index_name,
-                     query_text);
+                    query_text);
 
         json payload = {{"index_name", p.index_name}, {"query", query_text}};
         std::string response_str =
@@ -329,7 +330,7 @@ int SemanticSearchHandler::write(const char *path, const char *buf, size_t size,
     } else if (p.type == SearchPathType::CorpusFile) {
         std::string content(buf, size);
         SPDLOG_INFO("Indexing document '{}' ({} bytes) into index '{}'",
-                     p.file_name, size, p.index_name);
+                    p.file_name, size, p.index_name);
 
         json payload = {{"index_name", p.index_name},
                         {"document_id", p.file_name},

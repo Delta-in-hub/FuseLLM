@@ -34,8 +34,5 @@ class ConfigHandler : public BaseHandler {
   private:
     ConfigManager &default_config;
     std::vector<std::string> model_list_;
-
-    std::unordered_map<std::string, std::string> models_config;
-    std::mutex mtx_;
 };
 } // namespace fusellm

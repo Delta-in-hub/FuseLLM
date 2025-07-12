@@ -57,7 +57,7 @@ class SemanticSearchHandler : public BaseHandler {
     std::map<std::string, std::string> last_query_results_;
 
     // Mutex to protect shared state like `last_query_results_`.
-    std::mutex mtx_;
+    mutable std::mutex mtx_;
 
     // Helper to get the list of active search indexes from the backend.
     std::vector<std::string> list_indexes();
