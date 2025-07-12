@@ -7,7 +7,8 @@ namespace fusellm {
 // Use nlohmann::json for convenience
 using json = nlohmann::json;
 
-LLMClient::LLMClient(const ConfigManager &config_manager) {
+LLMClient::LLMClient(const ConfigManager &config_manager)
+    : config_manager_(config_manager) {
     const auto &api_key = config_manager.api_key_;
     const auto &base_url = config_manager.base_url_;
 

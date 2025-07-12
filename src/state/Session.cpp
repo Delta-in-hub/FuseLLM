@@ -91,8 +91,10 @@ std::string Session::add_prompt(std::string_view prompt,
 
     // 2. Call the LLM
     // The conversation_query method will handle the context and history
+    // 获取 ConfigManager 引用，而不是直接传递 ModelParameters
+    const ConfigManager& config = llm_client.get_config_manager();
     std::string response = llm_client.conversation_query(
-        model_name_, session_params_, conversation_);
+        model_name_, config, conversation_);
 
     if (response.empty()) {
         SPDLOG_ERROR("Session '{}': Received empty response from LLMClient.",

@@ -13,12 +13,12 @@ namespace fusellm {
 
 std::unordered_map<PathType, std::unique_ptr<BaseHandler>> FuseLLM::handlers;
 
-FuseLLM &FuseLLM::getInstance(const ConfigManager &config) {
+FuseLLM &FuseLLM::getInstance(ConfigManager &config) {
     static FuseLLM instance(config);
     return instance;
 }
 
-FuseLLM::FuseLLM(const ConfigManager &config)
+FuseLLM::FuseLLM(ConfigManager &config)
     : global_config(config), session_manager(config), llm_client(config),
       zmq_client() {
     SPDLOG_INFO("Initializing FuseLLM filesystem components...");
@@ -29,8 +29,7 @@ FuseLLM::FuseLLM(const ConfigManager &config)
     // Map path types to their corresponding handlers.
     handlers[PathType::Root] = std::make_unique<RootHandler>();
     handlers[PathType::Models] = std::make_unique<ModelsHandler>(
-        llm_client, const_cast<ConfigManager &>(global_config),
-        session_manager);
+        llm_client, global_config, session_manager);
 
     handlers[PathType::Config] =
         std::make_unique<ConfigHandler>(global_config, llm_client);

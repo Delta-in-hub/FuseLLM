@@ -17,7 +17,7 @@ namespace fusellm {
 class FuseLLM : public Fusepp::Fuse<FuseLLM> {
   public:
     // 获取单例的静态方法
-    static FuseLLM &getInstance(const ConfigManager &config);
+    static FuseLLM &getInstance(ConfigManager &config);
 
     FuseLLM() = delete;
     FuseLLM(const FuseLLM &) = delete;
@@ -42,8 +42,9 @@ class FuseLLM : public Fusepp::Fuse<FuseLLM> {
     // ... 其他 FUSE 操作
 
   private:
-    explicit FuseLLM(const ConfigManager &config);
-    ConfigManager global_config;
+    explicit FuseLLM(ConfigManager &config);
+    // 使用引用而不是值拷贝，避免 ConfigManager 的拷贝构造
+    ConfigManager &global_config;
     // 根据路径将请求分派给正确的 Handler
     static BaseHandler *get_handler(std::string_view path);
 

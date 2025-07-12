@@ -28,6 +28,12 @@ class LLMClient {
      * API key and base URL provided by the ConfigManager.
      */
     explicit LLMClient(const ConfigManager &config_manager);
+    
+    /**
+     * @brief 获取配置管理器引用
+     * @return 配置管理器的常量引用
+     */
+    const ConfigManager& get_config_manager() const { return config_manager_; }
 
     std::vector<std::string> model_list;
 
@@ -83,6 +89,9 @@ class LLMClient {
      */
     static std::string
     extract_content_from_response(const nlohmann::json &response_json);
+    
+    // 存储对配置管理器的引用
+    const ConfigManager &config_manager_;
 };
 
 } // namespace fusellm
