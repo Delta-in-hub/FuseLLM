@@ -1,0 +1,18 @@
+PROJECT_NAME           = "FuseLLM"
+PROJECT_BRIEF          = "Mount your LLM. Everything is a file. Even the LLM."
+
+OUTPUT_DIRECTORY       = docs/doxygen
+INPUT                  = src
+RECURSIVE              = YES
+
+
+EXTRACT_ALL            = YES
+EXTRACT_PRIVATE        = YES
+HAVE_DOT               = YES
+CLASS_DIAGRAMS         = YES
+CALL_GRAPH             = YES
+CALLER_GRAPH           = YES
+UML_LOOK               = YES
+
+
+GENERATE_LATEX         = NO
