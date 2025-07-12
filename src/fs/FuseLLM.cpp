@@ -111,4 +111,11 @@ int FuseLLM::rmdir(const char *path) {
     return handler->rmdir(path);
 }
 
+int FuseLLM::unlink(const char *path) {
+    BaseHandler *handler = get_handler(path);
+    if (!handler)
+        return -ENOENT;
+    return handler->unlink(path);
+}
+
 } // namespace fusellm

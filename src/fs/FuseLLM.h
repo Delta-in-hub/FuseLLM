@@ -39,6 +39,7 @@ class FuseLLM : public Fusepp::Fuse<FuseLLM> {
                      off_t offset, struct fuse_file_info *fi);
     static int mkdir(const char *path, mode_t mode);
     static int rmdir(const char *path);
+    static int unlink(const char *path);
     // ... 其他 FUSE 操作
 
   private:

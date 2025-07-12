@@ -24,7 +24,6 @@ print_header() {
     echo "  $1"
     echo "============================================================"
     echo ""
-    sleep 2 # 等待2秒，以便观察
 }
 
 
@@ -71,13 +70,6 @@ cat "models/${AVAILABLE_MODEL}"
 # 2.4 验证无状态交互是否已自动存档到会话中
 print_header "测试 2.4: 验证无状态交互的自动存档"
 ls -l conversations/
-# 检查 'latest' 符号链接是否存在
-if [ -L "conversations/latest" ]; then
-    echo "--> 'latest' 链接存在，验证其内容"
-    cat "conversations/latest/history"
-else
-    echo "警告: 未找到 'conversations/latest' 链接。"
-fi
 
 
 # ============================================================
@@ -139,7 +131,7 @@ print_header "测试 4: 配置管理 (/config)"
 # 4.1 读取模型专属配置
 echo "--> 4.1 读取模型 '${AVAILABLE_MODEL}' 的配置"
 cat "config/${AVAILABLE_MODEL}/settings.toml"
-
+echo ""
 # 4.2 更新模型专属配置
 echo "--> 4.2 更新模型 '${AVAILABLE_MODEL}' 的 temperature"
 echo 'temperature = 1.5' > "config/${AVAILABLE_MODEL}/settings.toml"
@@ -147,7 +139,7 @@ echo 'temperature = 1.5' > "config/${AVAILABLE_MODEL}/settings.toml"
 # 4.3 验证配置已更新
 echo "--> 4.3 验证配置已更新"
 cat "config/${AVAILABLE_MODEL}/settings.toml"
-
+echo ""
 # 4.4 再次进行一次性提问，观察行为是否更有创意
 echo "--> 4.4 在高 temperature 下提问"
 echo "Write a very short, creative story about a cat who discovers a secret door." > "models/${AVAILABLE_MODEL}"
@@ -176,7 +168,6 @@ echo "Fuse (Filesystem in Userspace) is an interface for userspace programs to e
 echo "The main component of a FUSE system is the libfuse library, which acts as a bridge." > "semantic_search/${INDEX_NAME}/corpus/libfuse.txt"
 echo "LLMs can be mounted using this technology." > "semantic_search/${INDEX_NAME}/corpus/llm_mount.txt"
 echo "--> 等待后台服务建立索引..."
-sleep 3 # 给Python服务一点时间来处理文件
 
 # 5.3 执行一个语义查询
 echo "--> 5.3 执行查询: 'What is FUSE?'"
@@ -185,16 +176,19 @@ echo "What is FUSE for?" > "semantic_search/${INDEX_NAME}/query"
 # 5.4 读取查询结果
 echo "--> 5.4 读取查询结果"
 cat "semantic_search/${INDEX_NAME}/query"
-
+echo ""
 # 5.5 从语料库中删除一个文件
 echo "--> 5.5 从语料库中删除一个文件"
 rm "semantic_search/${INDEX_NAME}/corpus/libfuse.txt"
-sleep 2
+
+
 
 # 5.6 再次查询，确认结果已变化
 echo "--> 5.6 再次查询，确认结果已变化"
 echo "Tell me about libfuse" > "semantic_search/${INDEX_NAME}/query"
 cat "semantic_search/${INDEX_NAME}/query"
+
+echo ""
 
 # 5.7 删除整个索引
 echo "--> 5.7 删除索引: ${INDEX_NAME}"

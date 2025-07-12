@@ -1,18 +1,18 @@
 import os
 os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 
-import argparse  # 引入命令行参数解析库
-import zmq
-import json
-import shutil
-import logging
+from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+from llama_index.core.query_engine import BaseQueryEngine
+from llama_index.core.node_parser import SentenceSplitter
 from llama_index.core import (
     VectorStoreIndex, Document, StorageContext,
     load_index_from_storage, Settings
 )
-from llama_index.core.node_parser import SentenceSplitter
-from llama_index.core.query_engine import BaseQueryEngine
-from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+import logging
+import shutil
+import json
+import zmq
+import argparse  # 引入命令行参数解析库
 
 
 # ==============================================================================
@@ -219,10 +219,12 @@ class SemanticSearchService:
         self._clear_cache(index_name)
         index = self._load_or_create_index(index_name)
         index.delete_ref_doc(doc_id, delete_from_docstore=True)
+        index.delete_nodes([doc_id], delete_from_docstore=True) 
+
         index.storage_context.persist(
             persist_dir=self._get_index_path(index_name))
 
-        logging.info(f"Removed document '{doc_id}' from index '{index_name}'.")
+        logging.info(f"Removed document/node '{doc_id}' from index '{index_name}'.")
         return {"status": "ok"}
 
     def handle_list_documents(self, payload: dict) -> dict | list:
@@ -266,7 +268,7 @@ class SemanticSearchService:
                 node = node_with_score.node
                 score = node_with_score.score if hasattr(
                     node_with_score, 'score') else 0.0
-                source = node.metadata.get("doc_id", "N/A")
+                source = node.id_ or node.ref_doc_id or "NA"
                 formatted_source = f"/corpus/{source}"
 
                 # 格式化输出每个搜索结果
