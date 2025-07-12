@@ -85,4 +85,11 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     target_link_options(fusellm PRIVATE
         -fsanitize=address
     )
+elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
+    # 在Release模式下保留调试符号，同时保持优化
+    target_compile_options(fusellm PRIVATE
+        -g      # 保留调试符号
+        -fno-omit-frame-pointer
+        -Ofast     # 优化级别
+    )
 endif()

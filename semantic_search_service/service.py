@@ -1,18 +1,19 @@
 import os
 os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 
-from llama_index.embeddings.huggingface import HuggingFaceEmbedding
-from llama_index.core.query_engine import BaseQueryEngine
-from llama_index.core.node_parser import SentenceSplitter
+import argparse  # 引入命令行参数解析库
+import zmq
+import json
+import shutil
+import logging
 from llama_index.core import (
     VectorStoreIndex, Document, StorageContext,
     load_index_from_storage, Settings
 )
-import logging
-import shutil
-import json
-import zmq
-import argparse  # 引入命令行参数解析库
+from llama_index.core.node_parser import SentenceSplitter
+from llama_index.core.query_engine import BaseQueryEngine
+from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+
 
 # ==============================================================================
 # 1. 早期环境和日志设置
@@ -122,13 +123,19 @@ class SemanticSearchService:
         """
         Retrieves or creates a query engine for a given index.
         Uses an in-memory cache.
+        Only uses vector similarity search, no LLM.
         """
         if index_name in self._query_engine_cache:
             return self._query_engine_cache[index_name]
 
         index = self._load_or_create_index(index_name)
         logging.debug(f"Creating new query engine for index '{index_name}'.")
-        engine = index.as_query_engine(similarity_top_k=3)
+        # 配置查询引擎仅使用向量相似度，不使用LLM生成回答
+        # response_mode="no_text"确保不生成文本回答，仅返回相似节点
+        engine = index.as_query_engine(
+            similarity_top_k=3,
+            response_mode="no_text"  # 不使用LLM生成文本
+        )
         self._query_engine_cache[index_name] = engine
         return engine
 
@@ -231,6 +238,9 @@ class SemanticSearchService:
         return list(doc_infos.keys()) if doc_infos else []
 
     def handle_query(self, payload: dict) -> str:
+        """
+        执行纯向量相似度搜索，不使用LLM处理结果
+        """
         index_name = payload.get("index_name")
         query_text = payload.get("query")
 
@@ -239,21 +249,29 @@ class SemanticSearchService:
 
         try:
             query_engine = self._get_query_engine(index_name)
+            # 使用查询引擎执行查询，由于配置了response_mode="no_text"，只返回相似节点
             response = query_engine.query(query_text)
 
-            if not response.source_nodes:
+            # 检查是否有搜索结果
+            if not hasattr(response, 'source_nodes') or not response.source_nodes:
                 return "No relevant documents found."
 
             output = []
             total_results = len(response.source_nodes)
+            logging.info(
+                f"Found {total_results} results for query: {query_text}")
+
+            # 处理每个相似节点，按相似度分数排序
             for i, node_with_score in enumerate(response.source_nodes):
                 node = node_with_score.node
-                score = node_with_score.score
+                score = node_with_score.score if hasattr(
+                    node_with_score, 'score') else 0.0
                 source = node.metadata.get("doc_id", "N/A")
                 formatted_source = f"/corpus/{source}"
 
+                # 格式化输出每个搜索结果
                 output.append(
-                    f"--- Result {i+1}/{total_results} (Score: {score:.2f}) ---\n"
+                    f"--- Result {i+1}/{total_results} (Similarity Score: {score:.4f}) ---\n"
                     f"Source: {formatted_source}\n"
                     f"Content: {node.get_content().strip()}"
                 )
@@ -262,8 +280,8 @@ class SemanticSearchService:
 
         except Exception as e:
             logging.error(
-                f"Query failed for index '{index_name}': {e}", exc_info=True)
-            return json.dumps({"error": f"An internal error occurred during the query: {e}"})
+                f"Vector search failed for index '{index_name}': {e}", exc_info=True)
+            return json.dumps({"error": f"An error occurred during vector similarity search: {e}"})
 
     def run(self):
         """

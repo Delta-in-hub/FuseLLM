@@ -328,3 +328,4 @@ rust-project.json
 
 .settings.toml
 all_files_output.txt
+semantic_search_service/index_storage

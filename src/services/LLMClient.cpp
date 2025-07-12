@@ -45,8 +45,8 @@ LLMClient::LLMClient(const ConfigManager &config_manager)
     }
 
     if (model_list.empty()) {
-        SPDLOG_ERROR("No models found");
-        throw std::runtime_error("No models found");
+        SPDLOG_ERROR("No models found. Please check your configuration.");
+        throw std::runtime_error("No models found. Please check your configuration, api_key, api_base_url ... or network connection.");
     }
 }
 

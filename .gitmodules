@@ -9,4 +9,4 @@
 	url = https://github.com/sewenew/redis-plus-plus.git
 [submodule "external/openai-cpp"]
 	path = external/openai-cpp
-	url = https://github.com/olrea/openai-cpp.git
+	url = https://github.com/Delta-in-hub/openai-cpp.git
