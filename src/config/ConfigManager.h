@@ -83,7 +83,7 @@ class ConfigManager {
      */
     ModelParameters get_model_params(std::string_view model_name) const;
 
-  private:
+  protected:
     std::unordered_map<std::string, ModelParameters> model_specific_params_;
     mutable std::mutex mtx_; // 用于保护 model_specific_params_
 };

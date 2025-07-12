@@ -10,7 +10,15 @@ add_executable(fusellm_tests
     
     # config 模块测试
     config/test_ConfigManager.cpp
+
+    # state 模块测试
+    state/test_SessionManager.cpp
+    state/test_Session.cpp
     
+    # handlers 模块测试
+    handlers/test_RootHandler.cpp
+    handlers/test_ConfigHandler.cpp
+
     # services 模块测试
     services/test_LLMClient.cpp
     services/test_ZmqClient.cpp
