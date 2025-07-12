@@ -1,3 +1,6 @@
+import os
+os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
+
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.core.query_engine import BaseQueryEngine
 from llama_index.core.node_parser import SentenceSplitter
@@ -6,7 +9,6 @@ from llama_index.core import (
     load_index_from_storage, Settings
 )
 import logging
-import os
 import shutil
 import json
 import zmq
@@ -17,7 +19,7 @@ import argparse  # 引入命令行参数解析库
 # ==============================================================================
 
 # 在导入任何可能触发模型下载的库（如 llama_index）之前设置环境变量
-os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
+
 
 # 配置日志记录
 logging.basicConfig(level=logging.DEBUG,
