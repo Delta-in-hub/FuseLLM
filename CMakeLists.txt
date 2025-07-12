@@ -67,7 +67,7 @@ set_target_properties(fusellmlib PROPERTIES
 target_link_libraries(fusellmlib PUBLIC
     # --- 来自子模块的目标 ---
     cppzmq
-    redis++::redis++             # redis-plus-plus 创建的目标
+    # redis++::redis++             # redis-plus-plus 创建的目标
     # --- 来自 find_package 的目标 ---
     doctest::doctest
     spdlog::spdlog

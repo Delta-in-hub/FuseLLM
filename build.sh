@@ -54,7 +54,7 @@ cmake \
 
 # --- 执行构建 ---
 echo "正在使用 Ninja 进行构建..."
-cmake --build "${BUILD_DIR}" --verbose
+cmake --build "${BUILD_DIR}"
 
 echo "构建完成！"
 echo "产物位于 '${BUILD_DIR}' 目录中。"
