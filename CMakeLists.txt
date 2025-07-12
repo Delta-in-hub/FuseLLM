@@ -32,10 +32,9 @@ add_subdirectory(external/cppzmq)
 add_subdirectory(external/redis-plus-plus)
 
 
-# --- 3. 定义可执行文件 ---
-add_executable(fusellm
-    src/main.cpp
-    # 当以下文件的实现（.cpp）被添加后，请取消注释
+# --- 3. 创建库文件 ---
+add_library(fusellmlib SHARED
+    # 所有源代码文件
     src/config/ConfigManager.cpp
     src/fs/FuseLLM.cpp
     src/fs/PathParser.cpp
@@ -51,10 +50,21 @@ add_executable(fusellm
 )
 
 # 为支持大文件（超过 2GB），添加此编译定义
-target_compile_definitions(fusellm PRIVATE _FILE_OFFSET_BITS=64)
+target_compile_definitions(fusellmlib PUBLIC _FILE_OFFSET_BITS=64)
 
-# --- 4. 链接所有依赖项目标 ---
-target_link_libraries(fusellm PRIVATE
+# --- 4. 定义可执行文件 ---
+add_executable(fusellm
+    src/main.cpp
+)
+
+# 设置动态库属性
+set_target_properties(fusellmlib PROPERTIES
+    VERSION 1.0.0
+    SOVERSION 1
+)
+
+# 为库链接所有依赖
+target_link_libraries(fusellmlib PUBLIC
     # --- 来自子模块的目标 ---
     cppzmq
     redis++::redis++             # redis-plus-plus 创建的目标
@@ -72,11 +82,23 @@ target_link_libraries(fusellm PRIVATE
     PkgConfig::CURL
 )
 
+# 链接到我们的库
+target_link_libraries(fusellm PRIVATE fusellmlib)
+
 # 显式添加 FUSE 的包含目录，确保头文件能被找到
-target_include_directories(fusellm PRIVATE ${FUSE_INCLUDE_DIRS})
+target_include_directories(fusellmlib PUBLIC ${FUSE_INCLUDE_DIRS})
 
 # --- 5. 设置构建选项 ---
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    target_compile_options(fusellmlib PRIVATE
+        -g
+        -fsanitize=address
+        -fno-omit-frame-pointer
+    )
+    target_link_options(fusellmlib PRIVATE
+        -fsanitize=address
+    )
+    
     target_compile_options(fusellm PRIVATE
         -g
         -fsanitize=address
@@ -87,9 +109,22 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     )
 elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
     # 在Release模式下保留调试符号，同时保持优化
+    target_compile_options(fusellmlib PRIVATE
+        -g      # 保留调试符号
+        -fno-omit-frame-pointer
+        -Ofast     # 优化级别
+    )
+    
     target_compile_options(fusellm PRIVATE
         -g      # 保留调试符号
         -fno-omit-frame-pointer
         -Ofast     # 优化级别
     )
 endif()
+
+
+# 启用测试支持
+enable_testing()
+
+# 添加测试目录
+add_subdirectory(test)

@@ -28,12 +28,12 @@ class LLMClient {
      * API key and base URL provided by the ConfigManager.
      */
     explicit LLMClient(const ConfigManager &config_manager);
-    
+
     /**
      * @brief 获取配置管理器引用
      * @return 配置管理器的常量引用
      */
-    const ConfigManager& get_config_manager() const { return config_manager_; }
+    const ConfigManager &get_config_manager() const { return config_manager_; }
 
     std::vector<std::string> model_list;
 
@@ -41,7 +41,8 @@ class LLMClient {
      * @brief Sends a simple, stateless query to the LLM.
      * @param model_name The name of the model to use (e.g., "gpt-4").
      * @param prompt The user's question or prompt.
-     * @param config_manager Reference to the ConfigManager to get model parameters.
+     * @param config_manager Reference to the ConfigManager to get model
+     * parameters.
      * @return The LLM's response as a string, or an empty string on failure.
      */
     std::string simple_query(std::string_view model_name,
@@ -62,7 +63,7 @@ class LLMClient {
                                    const ConfigManager &config_manager,
                                    const Conversation &conversation);
 
-  private:
+  protected:
     /**
      * @brief Converts the internal Message::Role enum to its string
      * representation for the OpenAI API.
@@ -89,7 +90,7 @@ class LLMClient {
      */
     static std::string
     extract_content_from_response(const nlohmann::json &response_json);
-    
+
     // 存储对配置管理器的引用
     const ConfigManager &config_manager_;
 };

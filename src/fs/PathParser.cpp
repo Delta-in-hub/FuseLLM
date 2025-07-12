@@ -6,6 +6,11 @@ namespace fusellm {
 
 PathType PathParser::parse(std::string_view path) {
     // SPDLOG_DEBUG("Parsing path: {}", path);
+    // 处理空字符串情况
+    if (path.empty()) {
+        return PathType::Other;
+    }
+    
     if (path == "/") {
         return PathType::Root;
     }
