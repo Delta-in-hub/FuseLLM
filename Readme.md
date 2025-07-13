@@ -214,8 +214,8 @@ After mounting, the root directory contains four main directories:
 
 *   **Build**: Use `./build.sh` (defaults to Debug mode) or `./build.sh release`.
 *   **Debug**: The project is pre-configured with VSCode's `launch.json` and `tasks.json`. Simply press `F5` in VSCode to launch a debugging session.
-*   **Unit Tests**: The project uses Doctest for unit testing. After building, the test executable is located at `build/test/fusellm_tests`.
-*   **Integration Tests**: Run the `test/test.sh` script to perform a series of automated functional tests on the mounted filesystem. See `test/test.md` for more details.
+*   **Unit Tests**: The project uses Doctest for unit testing. After building, the test executable is located at `build/test/fusellm_tests`. Configure the `OPENAI_API_KEY` and `OPENAI_API_BASE` in your environment variables.
+*   **Integration Tests**: Run the `test/test.sh` script to perform a series of automated functional tests on the mounted filesystem. See `test/test.md` for more details. Configure the `OPENAI_API_KEY` and `OPENAI_API_BASE` in your environment variables.
 *   **CI/CD**: Preconfigured Github Action CI/CD pipelines with unit and integration testing
 
 ---
