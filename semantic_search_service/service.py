@@ -42,6 +42,7 @@ try:
     # 这会从 Hugging Face Hub 下载模型（如果本地没有缓存的话）
     embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-small-en-v1.5")
     Settings.embed_model = embed_model
+    Settings.llm = None
     logging.info("Embedding model initialized successfully.")
 except Exception as e:
     logging.error(f"Failed to initialize embedding model: {e}", exc_info=True)
