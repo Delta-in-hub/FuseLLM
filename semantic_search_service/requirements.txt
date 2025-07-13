@@ -4,3 +4,4 @@ transformers
 sentence-transformers
 torch
 pyzmq
+llama-index-llms-openai
