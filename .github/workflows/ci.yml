@@ -17,11 +17,25 @@ jobs:
         with:
           submodules: 'recursive'
 
+      - name: 设置 Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: 配置 pip 缓存
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
       # 确保脚本有执行权限
       - name: 设置脚本执行权限
         run: |
           chmod +x ./scripts/debian.sh
           chmod +x ./build.sh
+          chmod +x ./test/test.sh
 
       # 检查是否存在必要的密钥
       - name: 检查环境变量
@@ -32,6 +46,13 @@ jobs:
           if [[ -z "${{ secrets.OPENAI_API_BASE }}" ]]; then
             echo "警告: OPENAI_API_BASE 未设置"
           fi
+
+      # 安装 FUSE 相关依赖
+      - name: 安装 FUSE 相关依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fuse libfuse2 libfuse3-dev
+        continue-on-error: false
 
       # 使用自定义脚本进行构建前准备
       - name: 使用 debian.sh 脚本安装依赖
@@ -45,8 +66,8 @@ jobs:
           ./build.sh
         continue-on-error: false
 
-      # 运行测试
-      - name: 运行测试
+      # 运行单元测试
+      - name: 运行单元测试
         if: success()
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -54,3 +75,53 @@ jobs:
         run: |
           cd build/test
           ./fusellm_tests
+
+      # 安装语义搜索服务依赖
+      - name: 安装语义搜索服务依赖
+        if: success()
+        run: |
+          pip install -r semantic_search_service/requirements.txt
+      
+      # 创建配置文件
+      - name: 创建配置文件
+        if: success()
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }
+          OPENAI_API_BASE: ${{ secrets.OPENAI_API_BASE }}
+        run: |
+          cat > .settings.toml << EOF
+          api_key = "${OPENAI_API_KEY}"
+          base_url = "${OPENAI_API_BASE}"
+          
+          [semantic_search]
+          service_url = "ipc:///tmp/fusellm-semantic.ipc"
+          EOF
+          
+          # 创建挂载点
+          mkdir -p /tmp/llm
+      
+      # 启动语义搜索服务
+      - name: 启动语义搜索服务
+        if: success()
+        run: |
+          # 使用sed删除service.py中的HF_ENDPOINT设置行
+          sed -i "/os.environ\['HF_ENDPOINT'\] = 'https:\/\/hf-mirror.com'/d" semantic_search_service/service.py
+
+          python semantic_search_service/service.py --endpoint "ipc:///tmp/fusellm-semantic.ipc" &
+          # 等待服务启动
+          sleep 60
+      
+      # 启动FuseLLM
+      - name: 启动FuseLLM
+        if: success()
+        run: |
+          ./build/fusellm -m /tmp/llm -c ./.settings.toml &
+          # 等待FuseLLM启动并挂载
+          sleep 30
+      
+      # 运行集成测试
+      - name: 运行集成测试
+        if: success()
+        run: |
+          cd test
+          bash ./test.sh
