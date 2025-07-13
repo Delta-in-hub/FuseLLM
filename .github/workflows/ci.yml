@@ -21,14 +21,8 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
-
-      - name: 配置 pip 缓存
-        uses: actions/cache@v3
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
+          cache: 'pip' # caching pip dependencies
+      - run: pip install -r semantic_search_service/requirements.txt
 
       # 确保脚本有执行权限
       - name: 设置脚本执行权限
@@ -51,7 +45,7 @@ jobs:
       - name: 安装 FUSE 相关依赖
         run: |
           sudo apt-get update
-          sudo apt-get install -y fuse libfuse2 libfuse3-dev
+          sudo apt-get install -y fuse3 libfuse2 libfuse3-dev
         continue-on-error: false
 
       # 使用自定义脚本进行构建前准备
@@ -76,12 +70,6 @@ jobs:
           cd build/test
           ./fusellm_tests
 
-      # 安装语义搜索服务依赖
-      - name: 安装语义搜索服务依赖
-        if: success()
-        run: |
-          pip install -r semantic_search_service/requirements.txt
-      
       # 创建配置文件
       - name: 创建配置文件
         if: success()
