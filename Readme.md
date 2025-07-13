@@ -13,10 +13,12 @@
 [![Language](https://img.shields.io/badge/language-C++17-purple.svg)](https://isocpp.org/)
 [![Platform](https://img.shields.io/badge/platform-Linux-lightgrey.svg)](https://www.linux.org/)
 
-**FuseLLM** is a filesystem based on FUSE (Filesystem in Userspace) that ingeniously maps interactions with Large Language Models (LLMs) to standard file and directory operations. By mounting an LLM into your system, you can use any standard command-line tool (`ls`, `cat`, `echo`, `grep`) to interact with AI seamlessly and programmatically.
+**FuseLLM** is a filesystem based on FUSE (Filesystem in Userspace) that maps interactions with Large Language Models (LLMs) to standard file and directory operations. By mounting an LLM into your system, you can use any standard command-line tool (`ls`, `cat`, `echo`, `grep`) to interact with LLM.
 
-The design philosophy is simple: **Everything is a file**. 
-We unify complex AI interactions under the universal model of "reading and writing files," integrating LLM capabilities into the classic Unix workflow.
+The design philosophy is simple: **Everything is a file**.
+
+
+We unify LLM interactions under the universal model of "reading and writing files," integrating LLM capabilities into the classic Unix way.
 
 
 ---
@@ -90,7 +92,8 @@ Noted. Your project uses C++17. How can I help you?
 Please explain what structured bindings are
 
 [AI]
-Of course. In C++17, structured bindings allow you to decompose an object (like a struct, pair, or tuple) into its individual members with a single declaration...
+Of course. In C++17, structured bindings allow you to decompose an object (like a struct, pair, or tuple) into its individual members with a single declaration 
+......
 ```
 
 ---
@@ -223,7 +226,14 @@ After mounting, the root directory contains four main directories:
 ### TODO
 
 - [ ] Handle concurrent requests ([bshoshany/thread-pool](https://github.com/bshoshany/thread-pool)) and future.
-- [ ] Improve the blocking behavior of `cat`
+- [ ] Improve the blocking behavior of `write`.
+- [ ] Save state to the redis or the database.
+
+
+### Others
+
+Looking for job opportunities as a Master's graduate in Software Engineering. Contact me at `DeltaMail@qq.com`.
+
 
 ---
 
