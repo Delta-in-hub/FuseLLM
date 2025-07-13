@@ -3,8 +3,21 @@ name: FuseLLM CI/CD Pipeline
 on:
   push:
     branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
+    paths:
+      - '**.py'
+      - '**.cpp'
+      - '**.c'
+      - '**.cc'
+      - '**.h'
+      - '**.hpp'
+      - '**.sh'
+      - 'CMakeLists.txt'
+      - 'scripts/**'
+      - 'test/**'
+      - 'semantic_search_service/**'
+      - '!**/*.md'
+      - '!**/*.txt'
+      - '!**/*.rst'
   workflow_dispatch:
 
 jobs:
