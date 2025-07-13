@@ -330,3 +330,5 @@ rust-project.json
 all_files_output.txt
 semantic_search_service/index_storage
 docs/doxygen
+perf.data*
+perf_*
