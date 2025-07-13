@@ -1,17 +1,18 @@
 import os
 os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
-from llama_index.embeddings.huggingface import HuggingFaceEmbedding
-from llama_index.core.query_engine import BaseQueryEngine
-from llama_index.core.node_parser import SentenceSplitter
+
+import argparse  # 引入命令行参数解析库
+import zmq
+import json
+import shutil
+import logging
 from llama_index.core import (
     VectorStoreIndex, Document, StorageContext,
     load_index_from_storage, Settings
 )
-import logging
-import shutil
-import json
-import zmq
-import argparse  # 引入命令行参数解析库
+from llama_index.core.node_parser import SentenceSplitter
+from llama_index.core.query_engine import BaseQueryEngine
+from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 
 
 # ==============================================================================
@@ -133,7 +134,8 @@ class SemanticSearchService:
         # response_mode="no_text"确保不生成文本回答，仅返回相似节点
         engine = index.as_query_engine(
             similarity_top_k=3,
-            response_mode="no_text"  # 不使用LLM生成文本
+            response_mode="no_text",  # 不使用LLM生成文本
+            llm=None,
         )
         self._query_engine_cache[index_name] = engine
         return engine
@@ -218,12 +220,13 @@ class SemanticSearchService:
         self._clear_cache(index_name)
         index = self._load_or_create_index(index_name)
         index.delete_ref_doc(doc_id, delete_from_docstore=True)
-        index.delete_nodes([doc_id], delete_from_docstore=True) 
+        index.delete_nodes([doc_id], delete_from_docstore=True)
 
         index.storage_context.persist(
             persist_dir=self._get_index_path(index_name))
 
-        logging.info(f"Removed document/node '{doc_id}' from index '{index_name}'.")
+        logging.info(
+            f"Removed document/node '{doc_id}' from index '{index_name}'.")
         return {"status": "ok"}
 
     def handle_list_documents(self, payload: dict) -> dict | list:
