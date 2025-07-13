@@ -1,0 +1,56 @@
+name: FuseLLM CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    name: 构建和测试 FuseLLM
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+
+      # 确保脚本有执行权限
+      - name: 设置脚本执行权限
+        run: |
+          chmod +x ./scripts/debian-build.sh
+          chmod +x ./build.sh
+
+      # 检查是否存在必要的密钥
+      - name: 检查环境变量
+        run: |
+          if [[ -z "${{ secrets.OPENAI_API_KEY }}" ]]; then
+            echo "警告: OPENAI_API_KEY 未设置"
+          fi
+          if [[ -z "${{ secrets.OPENAI_API_BASE }}" ]]; then
+            echo "警告: OPENAI_API_BASE 未设置"
+          fi
+
+      # 使用自定义脚本进行构建前准备和构建
+      - name: 使用 debian-build.sh 脚本构建
+        run: |
+          sudo ./scripts/debian-build.sh
+        continue-on-error: false
+
+      # 使用项目自定义的构建脚本
+      - name: 使用 build.sh 脚本进行最终构建
+        run: |
+          ./build.sh
+        continue-on-error: false
+
+      # 运行测试
+      - name: 运行测试
+        if: success()
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_API_BASE: ${{ secrets.OPENAI_API_BASE }}
+        run: |
+          cd build/test
+          ./fusellm_tests

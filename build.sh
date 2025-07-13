@@ -40,7 +40,7 @@ SOURCE_DIR=$(pwd)
 BUILD_DIR="build"
 
 # --- CMake 配置 ---
-# 使用 clang/clang++ 编译器, Ninja 作为生成器
+# 使用 Ninja 作为生成器
 # 并通过 CMAKE_*_LINKER_FLAGS 将 "-fuse-ld=mold" 标志传递给链接器
 echo "正在为 ${BUILD_TYPE} 模式配置 CMake..."
 cmake \
