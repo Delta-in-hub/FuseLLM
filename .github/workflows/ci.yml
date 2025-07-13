@@ -86,7 +86,7 @@ jobs:
       - name: 创建配置文件
         if: success()
         env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_API_BASE: ${{ secrets.OPENAI_API_BASE }}
         run: |
           cat > .settings.toml << EOF
