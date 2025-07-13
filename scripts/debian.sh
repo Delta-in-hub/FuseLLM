@@ -52,28 +52,4 @@ make -j$(nproc)
 echo "安装 spdlog (需要 sudo 权限)..."
 sudo make install
 
-# 返回项目目录
-cd "$(dirname "$0")"
-echo "✅ spdlog 安装完成"
-
-# 5. 构建 FuseLLM
-echo "===== 构建 FuseLLM ====="
-if [ -f "build.sh" ]; then
-  echo "运行项目提供的构建脚本..."
-  bash build.sh
-else
-  echo "⚠️ 警告：未找到 build.sh 脚本，尝试手动构建..."
-  
-  # 创建构建目录
-  mkdir -p build
-  cd build
-  
-  # 配置项目
-  cmake .. -GNinja
-
-  # 构建项目
-  ninja
-fi
-
-echo "===== FuseLLM 构建完成 SUCCESS ====="
-
+echo "===== 依赖安装完成 SUCCESS ====="

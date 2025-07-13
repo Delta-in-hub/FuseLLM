@@ -20,7 +20,7 @@ jobs:
       # 确保脚本有执行权限
       - name: 设置脚本执行权限
         run: |
-          chmod +x ./scripts/debian-build.sh
+          chmod +x ./scripts/debian.sh
           chmod +x ./build.sh
 
       # 检查是否存在必要的密钥
@@ -33,10 +33,10 @@ jobs:
             echo "警告: OPENAI_API_BASE 未设置"
           fi
 
-      # 使用自定义脚本进行构建前准备和构建
-      - name: 使用 debian-build.sh 脚本构建
+      # 使用自定义脚本进行构建前准备
+      - name: 使用 debian.sh 脚本安装依赖
         run: |
-          sudo ./scripts/debian-build.sh
+          sudo ./scripts/debian.sh
         continue-on-error: false
 
       # 使用项目自定义的构建脚本
