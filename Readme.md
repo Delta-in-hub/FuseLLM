@@ -1,5 +1,5 @@
 
-![FuseLLM Concept Diagram](https://github.com/user-attachments/assets/1c3c4655-3bcc-4f60-ac42-c1e6556bbdd5)
+![FuseLLM Concept Diagram](https://github.com/user-attachments/assets/42239259-29b7-4f46-b239-d0898a538c43)
 
 # **FuseLLM**
 > https://github.com/Delta-in-hub/FuseLLM
