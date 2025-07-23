@@ -1,5 +1,5 @@
 
-![FuseLLM Concept Diagram](assets/image-20250710220325924.png)
+![FuseLLM Concept Diagram](https://github.com/user-attachments/assets/1c3c4655-3bcc-4f60-ac42-c1e6556bbdd5)
 
 # **FuseLLM**
 > https://github.com/Delta-in-hub/FuseLLM
@@ -240,5 +240,3 @@ Looking for job opportunities as a Master's graduate in Software Engineering. Co
 ### License
 
 This project is licensed under the [MPL 2.0 License](LICENSE).
-
-> MPL is a compromise that keeps the modified source code open while allowing closed-source components to exist within the overall project.
